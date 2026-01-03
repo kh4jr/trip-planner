@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
+/* 1. ZMIENNE CSS: Obsługa manualnego przełącznika (next-themes) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Domyślne wartości (jasny tryb) */
+  --bg-body: #f4f7f6; /* Jasne tło główne */
+  --text-primary: #333; /* Główny ciemny tekst */
+  --bg-card: #ffffff; /* Białe tło kontenerów/kart */
+  --text-header: #1e40af; /* Ciemny niebieski dla h2 */
+  --border-primary: #e5e7eb; /* Jasna linia h2 */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Nadpisywanie zmiennych, gdy KLASA 'dark' JEST AKTYWNA (przełącznik) */
+/* Używamy selektora z wyższą specyficznością */
+html.dark {
+  --bg-body: #111827;
+  --text-primary: #f3f4f6;
+  --bg-card: #1f2937; /* Ciemny kolor karty/kontenera */
+  --text-header: #93c5fd; /* Jasny niebieski */
+  --border-primary: #374151; /* Ciemna linia h2 */
 }
 
+/* 2. NEUTRALIZACJA PREFERS-COLOR-SCHEME */
+/* Wyłączamy automatyczne przełączanie, jeśli next-themes jest włączony, 
+   aby uniknąć kolizji z klasą 'dark' i manualnym przełączaniem */
 @media (prefers-color-scheme: dark) {
+  /* Możesz usunąć ten blok, jeśli nie używasz już zmiennych --background/--foreground */
+  /* lub pozostawić, jeśli chcesz zachować logikę zmiennych: */
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+  
+  /* Ważne: Zapewniamy, że style manualnego przełącznika mają priorytet */
+  html:not(.dark) {
+    /* Upewnij się, że bez klasy .dark stosowane są jasne kolory (jeśli chcesz wyłączyć preferencje systemowe) */
+  }
 }
 
+/* 3. ZASTOSOWANIE ZMIENNYCH CSS */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    font-family: sans-serif;
+    
+    /* Używamy zdefiniowanych zmiennych */
+    background-color: var(--bg-body); 
+    color: var(--text-primary);
+    
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* Nadpisanie Twoich starych reguł body dla trybu ciemnego (teraz używamy zmiennych) */
+html.dark body {
+    background-color: var(--bg-body); 
+    color: var(--text-primary);
+}
+
+
+/* 4. KONKRETNE KONTENERY (KARTY) */
+
+/* Nadpisanie stałych kolorów na kontenerach */
+.sidebar-container,
+.content-container {
+    /* W jasnym trybie jest to biały. W ciemnym będzie --bg-card */
+    background-color: var(--bg-card); 
+    /* Pozostałe style bez zmian */
+    flex: 1; 
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* 5. POZOSTAŁE ELEMENTY */
+
+/* Nagłówki h2 */
+h2 {
+    color: var(--text-header);
+    border-bottom: 2px solid var(--border-primary);
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+html.dark .bg-white {
+  background-color: var(--bg-card) !important; 
+  /* Uwaga: W oryginalnym CSS miałeś tu border-color, upewnij się, że jest to potrzebne */
+  border-color: #374151 !important; 
+}
+
+/* Zmiana koloru głównego nagłówka, który ma klasę bg-blue-600 */
+html.dark .bg-blue-600 {
+    background-color: #1e3a8a !important; /* Używamy !important, aby nadpisać Tailwind */
+}
+
+/* Header (Jeśli używasz klasy .header, a nie bg-blue-600 z Tailwind) */
+.header {
+    background-color: #3b82f6; /* Kolor niebieski - Jasny tryb */
+    /* ... inne style ... */
+}
+html.dark .header {
+    background-color: #1e3a8a; /* Ciemny niebieski - Ciemny tryb */
 }
