@@ -14,6 +14,7 @@ export interface Expense {
   amount: number; // Kwota wydatku
   paidById: string; // ID uczestnika, który zapłacił
   splitBy: string[]; // Tablica ID uczestników, na których się dzieli (lub 'Wszyscy')
+  date?: string; // Data wydatku w formacie ISO (opcjonalnie)
 }
 
 // NOWY INTERFEJS: Zadanie/Element do Pakowania
