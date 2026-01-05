@@ -1,15 +1,17 @@
 "use client";
 import { useState } from 'react';
-import { Trip, Activity, Expense, TripItem } from '@/lib/data'; 
+import { Trip, Activity, Expense, TripItem, Note } from '@/lib/data'; 
 import TripDetails from './TripPlanModule';  
 import BudgetModule from './BudgetModule'; 
 import TasksModule from './TasksModule';  
+import NotesModule from './NotesModule';
 
 interface TripTabsProps {
     trip: Trip;
     activities: Activity[];
     expenses: Expense[]; // NOWY PROP
     tripItems: TripItem[]; // NOWY PROP
+    notes: Note[]; // NOWY PROP
     
     // Funkcje do zarządzania stanem
     onAddActivity: () => void;
@@ -17,6 +19,7 @@ interface TripTabsProps {
     onToggleItem: (itemId: number) => void; // Będziemy implementować
     onDeleteTrip: (id: number) => void;
     onDeleteActivity: (id: number) => void;
+    onAddNote: (note: Note) => void; // NOWA FUNKCJA
 }
 
 const TABS = [
@@ -109,6 +112,23 @@ export default function TripTabs(props: TripTabsProps) {
                          onToggleItem={props.onToggleItem}
                          // W przyszłości: onAddItem, onDeleteItem
                     />
+                )}
+
+                {activeTab === 'photo' && (
+                    <div className="p-4">
+                        <h3 className="text-xl font-semibold">Moduł foto - W Budowie!</h3>
+                        <p className="text-gray-600 mt-2">Ta funkcja będzie dostępna w przyszłych aktualizacjach.</p>
+                    </div>
+                )}
+
+                {activeTab === 'notes' && (
+                    <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
+                    <NotesModule
+                        tripId={props.trip.id}
+                        notes={props.notes} // Przekazujemy prawdziwe notatki z propsów
+                        onAddNote={props.onAddNote} // Przekazujemy prawdziwą funkcję zapisu
+                    />    
+                    </div>
                 )}
             </div>
         </div>

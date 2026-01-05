@@ -44,6 +44,14 @@ export interface Activity {
     assignedTo?: string;
 }
 
+export interface Note {
+    id: number;
+    tripId: number;
+    title: string;
+    content: string;
+    createdAt: string; 
+}
+
 // Przykładowe dane Uczestników (używamy imion z MOCK_TRIPS, ale jako obiekty)
 export const MOCK_PARTICIPANTS: Participant[] = [
     { id: 'u1', name: 'Ty', email: 'ja@test.com', role: 'owner' },

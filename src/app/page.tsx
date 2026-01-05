@@ -7,7 +7,7 @@ import TripList from '@/components/TripList';
 import TripTabs from "@/components/TripTabs"; 
 import TripForm from "@/components/TripForm";
 import ActivityForm from "@/components/ActivityForm";
-import { MOCK_TRIPS, MOCK_ACTIVITIES, MOCK_EXPENSES, MOCK_ITEMS, Trip, Activity, Expense, TripItem } from '@/lib/data';
+import { MOCK_TRIPS, MOCK_ACTIVITIES, MOCK_EXPENSES, MOCK_ITEMS, Trip, Activity, Expense, TripItem, Note } from '@/lib/data';
 import ThemeSwitcher from '@/components/ThemeSwicher';
 //import '@styles/globals.css';
 
@@ -19,6 +19,7 @@ export default function Home() {
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(trips[0] || null);
   const [isCreating, setIsCreating] = useState(false); 
   const [isAddingActivity, setIsAddingActivity] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]); // NOWY STAN
 
 
 
@@ -58,11 +59,10 @@ export default function Home() {
     setActivities(prevActivities => prevActivities.filter(a => a.id !== activityId));
   };
 
-  // NOWA FUNKCJA: Dodawanie Wydatku
+// NOWA FUNKCJA: Dodawanie Wydatku
 const handleAddExpense = (newExpense: Expense) => {
-    setExpenses(prevExpenses => [newExpense, ...prevExpenses]);
-    // W przyszłości możesz dodać logikę do automatycznego przełączania na zakładkę "Budżet", jeśli użytkownik był w innym miejscu
-};
+    console.log("Dodawanie wydatku:", newExpense);  
+    setExpenses(prevExpenses => [newExpense, ...prevExpenses]); 
 
 // NOWA FUNKCJA: Przełączanie statusu zadania/pakowania
 const handleToggleItem = (itemId: number) => {
@@ -70,6 +70,10 @@ const handleToggleItem = (itemId: number) => {
         // Jeśli ID się zgadza, odwróć wartość isCompleted
         item.id === itemId ? { ...item, isCompleted: !item.isCompleted } : item
     ));
+};
+
+const handleAddNote = (newNote: Note) => {
+    setNotes((prev) => [newNote, ...prev]);
 };
 
   // (Użyj swojego kodu nagłówka z AuthButton)
@@ -141,6 +145,8 @@ const handleToggleItem = (itemId: number) => {
                     activities={activities.filter(a => a.tripId === selectedTrip.id)}
                     expenses={expenses.filter(e => e.tripId === selectedTrip.id)} // <-- PRZEKAZUJEMY WYDATKI
                     tripItems={tripItems.filter(item => item.tripId === selectedTrip.id)} // <-- PRZEKAZUJEMY ZADANIA
+                    notes={notes.filter(n => n.tripId === selectedTrip.id)} // <-- PRZEKAZUJEMY NOTATKI
+                    onAddNote={handleAddNote} // <-- NOWY PROP
                     
                     onAddActivity={() => setIsAddingActivity(true)} 
                     onDeleteActivity={handleDeleteActivity}
@@ -158,3 +164,4 @@ const handleToggleItem = (itemId: number) => {
     </div>
   );
 }
+};
