@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "next": "15.5.4",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "bcryptjs": "^3.0.3",
+    "next": "^15.5.9",
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.6",
     "react": "19.1.0",
