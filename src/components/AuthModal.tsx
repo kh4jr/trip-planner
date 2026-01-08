@@ -33,50 +33,56 @@ export default function AuthModal({ isOpen, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-[320px]">
-        <h2 className="text-xl font-bold mb-4">Logowanie</h2>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        
+        {/* NAGŁÓWEK Z KOLOREM */}
+        <div className="bg-blue-600 p-6 text-white text-center">
+          <h2 className="text-2xl font-bold">Witaj ponownie!</h2>
+          <p className="text-blue-100 text-sm mt-1">Zaloguj się, aby zarządzać swoimi podróżami</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="text"
-            placeholder="Login"
-            value={login}
-            onChange={(e) => setLogin(e.target.value)}
-            className="w-full border px-3 py-2 rounded"
-            required
-          />
+        <div className="p-8 space-y-5">
+          {/* POLE EMAIL */}
+          <div className="space-y-1 text-left">
+            <label className="text-sm font-semibold text-gray-700 ml-1">Adres e-mail</label>
+            <input 
+              type="email" 
+              placeholder="np. jan@kowalski.pl"
+              className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder:text-gray-400"
+            />
+          </div>
 
-          <input
-            type="password"
-            placeholder="Hasło"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border px-3 py-2 rounded"
-            required
-          />
+          {/* POLE HASŁO */}
+          <div className="space-y-1 text-left">
+            <label className="text-sm font-semibold text-gray-700 ml-1">Hasło</label>
+            <input 
+              type="password" 
+              placeholder="••••••••"
+              className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder:text-gray-400"
+            />
+          </div>
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
-          )}
-
-          <div className="flex justify-between pt-2">
-            <button
-              type="submit"
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-            >
-              Zaloguj
+          {/* PRZYCISKI AKCJI */}
+          <div className="pt-2 space-y-3">
+            <button className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-green-200 transition-all active:scale-95">
+              Zaloguj się
             </button>
-
-            <button
-              type="button"
+            <button 
               onClick={onClose}
-              className="text-gray-600 hover:underline"
+              className="w-full bg-gray-50 hover:bg-gray-100 text-gray-500 font-semibold py-3 rounded-xl transition-colors"
             >
               Anuluj
             </button>
           </div>
-        </form>
+        </div>
+
+        {/* STOPKA */}
+        <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
+          <p className="text-sm text-gray-500">
+            Nie masz konta? <button className="text-blue-600 font-bold hover:underline">Zarejestruj się</button>
+          </p>
+        </div>
       </div>
     </div>
   );

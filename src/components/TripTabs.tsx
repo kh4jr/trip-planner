@@ -28,20 +28,22 @@ const TABS = [
     { id: 'tasks', label: 'Zadania/Pakowanie' },
     { id: 'photos', label: 'Zdjęcia 📸' }, // Na przyszłość
     { id: 'notes', label: 'Notatki 📝' },  // Na przyszłość
-    { id: 'chat', label: 'Czat 💬' }   // Na przyszłość
+    //{ id: 'chat', label: 'Czat 💬' }   // Na przyszłość
 ];
+
+//const today = new Date().toISOString().split('T')[0];
 
 export default function TripTabs(props: TripTabsProps) {
     const [activeTab, setActiveTab] = useState('plan');
 
-    // Komponent Tab Button
+    // Komponent przycisku zakładki
     const TabButton = ({ id, label }: { id: string, label: string }) => (
         <button
             onClick={() => setActiveTab(id)}
-            className={`py-2 px-4 text-sm font-medium transition-colors duration-200
+            className={`py-2 px-4 text-sm font-medium transition-all duration-200 border-b-2 
                 ${activeTab === id 
-                    ? 'border-b-2 border-blue-600 text-blue-600' 
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'border-blue-600 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`
             }
         >
@@ -52,41 +54,39 @@ export default function TripTabs(props: TripTabsProps) {
     const participantsMap = new Map(props.trip.participants.map(p => [p.id, p]));
 
     return (
-        <div>
-            {/* 1. NAGŁÓWEK SZCZEGÓŁÓW (Góra) */}
-            <div className="flex justify-between items-start border-b pb-4 mb-4">
-                {/* Przywrócony widok informacji o wyjeździe */}
+        <div className="space-y-4">
+            {/* 1. NAGŁÓWEK SZCZEGÓŁÓW */}
+            <div className="flex justify-between items-start border-b pb-4">
                 <div>
                     <h2 className="text-3xl font-bold text-gray-800">{props.trip.name}</h2>
                     <p className="text-lg text-blue-600 mb-2">{props.trip.destination}</p>
                     <div className="text-sm text-gray-600">
-                        <span className="font-semibold">Daty:</span> {props.trip.startDate} do {props.trip.endDate} | 
-                        <span className="font-semibold ml-2">Uczestnicy:</span> {props.trip.participants.map(p => p.name).join(', ')}
+                        <span className="font-semibold">Daty:</span> {props.trip.startDate} do {props.trip.endDate}
+                        <span className="mx-2">|</span>
+                        <span className="font-semibold">Uczestnicy:</span> {props.trip.participants.map(p => p.name).join(', ')}
                     </div>
                 </div>
                 
-                {/* Przycisk Usuń Wyjazd */}
                 <button
                     onClick={() => {
                         if (window.confirm(`Czy na pewno chcesz usunąć wyjazd "${props.trip.name}"?`)) {
                             props.onDeleteTrip(props.trip.id);
                         }
                     }}
-                    className="text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded text-sm transition"
+                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors shadow-sm"
                 >
                     Usuń Wyjazd
                 </button>
             </div>
 
-            {/* 2. ZAKŁADKI (TABS) */}
-            <div className="border-b mb-6 flex space-x-4">
+            {/* 2. MENU ZAKŁADEK */}
+            <div className="flex space-x-2 border-b overflow-x-auto">
                 {TABS.map(tab => <TabButton key={tab.id} id={tab.id} label={tab.label} />)}
             </div>
 
-            {/* 3. KONTENER ZAWARTOŚCI */}
-            <div>
+            {/* 3. TREŚĆ ZAKŁADEK */}
+            <div className="mt-4">
                 {activeTab === 'plan' && (
-                    // Używamy TripDetails jako modułu Planu
                     <TripDetails 
                         activities={props.activities} 
                         onAddActivity={props.onAddActivity}
@@ -110,28 +110,26 @@ export default function TripTabs(props: TripTabsProps) {
                          tripItems={props.tripItems}
                          participantsMap={participantsMap}
                          onToggleItem={props.onToggleItem}
-                         // W przyszłości: onAddItem, onDeleteItem
                     />
                 )}
 
-                {activeTab === 'photo' && (
-                    <div className="p-4">
-                        <h3 className="text-xl font-semibold">Moduł foto - W Budowie!</h3>
-                        <p className="text-gray-600 mt-2">Ta funkcja będzie dostępna w przyszłych aktualizacjach.</p>
+                {activeTab === 'photos' && (
+                    <div className="p-10 text-center bg-gray-50 rounded-xl border-2 border-dashed">
+                        <h3 className="text-xl font-semibold text-gray-400">Moduł zdjęć w budowie 📸</h3>
+                        <p className="text-gray-400 mt-2">Wkrótce będziesz mógł tutaj dodawać wspomnienia z podróży.</p>
                     </div>
                 )}
 
                 {activeTab === 'notes' && (
-                    <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
-                    <NotesModule
-                        tripId={props.trip.id}
-                        notes={props.notes} // Przekazujemy prawdziwe notatki z propsów
-                        onAddNote={props.onAddNote} // Przekazujemy prawdziwą funkcję zapisu
-                    />    
+                    <div className="bg-white p-2 rounded-xl">
+                        <NotesModule
+                            tripId={props.trip.id}
+                            notes={props.notes} 
+                            onAddNote={props.onAddNote}
+                        />    
                     </div>
                 )}
             </div>
         </div>
     );
 }
-
