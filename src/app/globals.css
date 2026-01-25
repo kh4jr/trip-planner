@@ -1,4 +1,18 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 243, 244, 246; /* Jasny szary */
+  --background-end-rgb: 255, 255, 255;   /* Biały */
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: white;
+}
 
 /* 1. ZMIENNE CSS: Obsługa manualnego przełącznika (next-themes) */
 :root {

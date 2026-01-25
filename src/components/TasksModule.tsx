@@ -5,13 +5,14 @@ import { TripItem, Participant } from '@/lib/data';
 interface TasksModuleProps {
     tripId: number;
     tripItems: TripItem[];
-    participantsMap: Map<string, Participant>;
+    participantsMap: Map<number, Participant>; // Zmiana string na number
     onToggleItem: (itemId: number) => void;
 }
 
 export default function TasksModule({ tripItems, participantsMap, onToggleItem }: TasksModuleProps) {
-    const packingList = tripItems.filter(item => item.type === 'packing');
-    const todoList = tripItems.filter(item => item.type === 'todo');
+    // Dopasowanie do pól z bazy: 'category' zamiast 'type' i 'name' zamiast 'description'
+    const packingList = tripItems.filter(item => item.category === 'packing');
+    const todoList = tripItems.filter(item => item.category === 'todo');
 
     const renderList = (list: TripItem[], title: string) => (
         <div className="mb-8">
@@ -27,17 +28,18 @@ export default function TasksModule({ tripItems, participantsMap, onToggleItem }
                                 className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                             />
                             <span className={`ml-3 ${item.isCompleted ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                                {item.description}
+                                {item.name}
                             </span>
                         </div>
                         <div className="text-sm text-blue-500">
-                            {item.assignedToId ? `Odp.: ${participantsMap.get(item.assignedToId)?.name}` : 'Nieprzypisane'}
+                           {/* Zakładając, że w bazie mamy relację lub pole do przypisania - na razie uproszczone */}
+                           Odp.: Wszyscy
                         </div>
                     </li>
                 ))}
             </ul>
              <button 
-                onClick={() => alert(`W przyszłości otworzę formularz dodawania ${title.toLowerCase()}!`) /* setIsAddingItem(true) */}
+                onClick={() => alert(`W przyszłości otworzę formularz dodawania ${title.toLowerCase()}!`)}
                 className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-1 px-4 rounded text-sm"
             >
                 + Dodaj {title === 'Lista Pakowania' ? 'Rzecz' : 'Zadanie'}

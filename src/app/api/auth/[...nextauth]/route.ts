@@ -1,71 +1,42 @@
-import NextAuth from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import GithubProvider from 'next-auth/providers/github';
-import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import NextAuth from "next-auth";
+import { AuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { prisma } from "@/lib/db";
+import bcrypt from "bcrypt";
 
-const prisma = new PrismaClient();
-
-const handler = NextAuth({
-  adapter: PrismaAdapter(prisma),
-
-  // ✅ SESSION STORED IN DATABASE
-  session: {
-    strategy: 'database',
-  },
-
+// Musi być export const, aby page.tsx mógł to zaimportować!
+export const authOptions: AuthOptions = {
   providers: [
-    GithubProvider({
-      clientId: process.env.GITHUB_ID ?? '',
-      clientSecret: process.env.GITHUB_SECRET ?? '',
-    }),
-
     CredentialsProvider({
-      name: 'Credentials',
-
+      name: "Credentials",
       credentials: {
-        login: { type: 'text' },
-        password: { type: 'password' },
+        email: { label: "Email", type: "text" },
+        password: { label: "Password", type: "password" }
       },
-
       async authorize(credentials) {
-        if (!credentials?.login || !credentials.password) {
-          return null;
-        }
+        if (!credentials?.email || !credentials?.password) return null;
 
-        // 1️⃣ Find user
         const user = await prisma.user.findUnique({
-          where: { email: credentials.login },
+          where: { email: credentials.email }
         });
 
-        if (!user || !user.password) {
-          return null;
-        }
+        if (!user || !user.password) return null;
 
-        // 2️⃣ Verify password (ONE TIME)
-        const isValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        if (!isPasswordValid) return null;
 
-        if (!isValid) {
-          return null;
-        }
-
-        // 3️⃣ Return SAFE user object
         return {
-          id: user.id,
-          name: user.name,
+          id: user.id.toString(),
           email: user.email,
+          name: user.name,
         };
-      },
-    }),
+      }
+    })
   ],
+  session: { strategy: "jwt" },
+  pages: { signIn: "/" },
+  secret: process.env.NEXTAUTH_SECRET,
+};
 
-  pages: {
-    signIn: '/', // modal-based login
-  },
-});
-
+const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

@@ -1,15 +1,11 @@
-// src/components/TripPlanModule.tsx
-// To jest dawny TripDetails, który teraz działa jako moduł w zakładce.
 "use client";
 
 import { Activity } from "@/lib/data"; 
 
 interface TripPlanModuleProps {
-  // Nie potrzebuje już propa 'trip', bo to TripTabs renderuje nagłówek.
   activities: Activity[];
   onAddActivity: () => void; 
   onDeleteActivity: (id: number) => void; 
-  // Nie potrzebuje już propa 'onDeleteTrip', bo to TripTabs obsługuje usuwanie wyjazdu.
 }
 
 export default function TripPlanModule({ 
@@ -20,10 +16,6 @@ export default function TripPlanModule({
   
   return (
     <div>
-      {/* UWAGA: W tym module usunęliśmy nagłówek z informacjami o wyjeździe 
-        i przycisk Usuń Wyjazd, ponieważ są one teraz w TripTabs.tsx.
-      */}
-      
       <h3 className="text-xl font-semibold text-gray-700 mb-4">Zaplanowane Aktywności</h3>
       
       {activities.length > 0 ? (
@@ -34,18 +26,18 @@ export default function TripPlanModule({
                 className="p-3 border rounded-lg bg-gray-50 flex justify-between items-center transition duration-150 ease-in-out hover:shadow-sm"
             >
               <div className="flex-1">
-                <span className="font-medium text-gray-900">{activity.time}:</span> {activity.description}
+                {/* ZMIANA: activity.name zamiast activity.description */}
+                <span className="font-medium text-gray-900">{activity.time}:</span> {activity.name}
               </div>
               
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-blue-500 bg-blue-50 py-1 px-2 rounded-full">
-                  Odp.: {activity.assignedTo || "Brak"}
+                  {activity.location || "Brak lokalizacji"}
                 </span>
                 
-                {/* PRZYCISK USUWANIA AKTYWNOŚCI */}
                 <button
                   onClick={() => {
-                     if (window.confirm(`Czy na pewno usunąć "${activity.description}"?`)) {
+                     if (window.confirm(`Czy na pewno usunąć "${activity.name}"?`)) {
                           onDeleteActivity(activity.id);
                      }
                   }}
@@ -64,7 +56,6 @@ export default function TripPlanModule({
         <p className="text-gray-400 italic">Brak zaplanowanych aktywności. Dodaj pierwszą!</p>
       )}
 
-      {/* Przycisk do dodawania nowej aktywności */}
       <div className="mt-6">
         <button 
           onClick={onAddActivity}

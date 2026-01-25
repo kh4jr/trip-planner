@@ -1,102 +1,82 @@
-// src/components/ActivityForm.tsx
 "use client";
-
 import { useState } from 'react';
 import { Activity } from '@/lib/data';
 
 interface ActivityFormProps {
   tripId: number;
-  participants: string[]; // Lista uczestników do wyboru
+  participants: string[];
   onSave: (activity: Activity) => void;
   onCancel: () => void;
 }
 
-export default function ActivityForm({ tripId, participants, onSave, onCancel }: ActivityFormProps) {
+export default function ActivityForm({ tripId, onSave, onCancel }: ActivityFormProps) {
+  const [name, setName] = useState('');
   const [time, setTime] = useState('');
-  const [description, setDescription] = useState('');
-  const [assignedTo, setAssignedTo] = useState('Wszyscy');
-  
+  const [location, setLocation] = useState('');
+  const [price, setPrice] = useState('0');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!time || !description) {
-      alert("Wypełnij czas i opis!");
-      return;
-    }
-
+    // Tworzymy obiekt dokładnie według typu Activity z lib/data.ts
     const newActivity: Activity = {
-      id: Date.now() * Math.random(), // Używamy losowego ID
+      id: Date.now(), // Generujemy tymczasowe ID jako number
       tripId: tripId,
-      time,
-      description,
-      assignedTo,
+      name: name,
+      category: 'Plan',
+      time: time,
+      location: location,
+      price: parseFloat(price) || 0,
+      participants: []
     };
 
-    onSave(newActivity); // Dodaj nową aktywność do globalnego stanu
+    onSave(newActivity);
   };
 
   return (
-    <div className="p-4 border-2 border-dashed border-blue-200 rounded-xl">
-        <h3 className="text-xl font-semibold mb-4">Dodawanie Nowej Aktywności</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-            
-            <div>
-                <label htmlFor="time" className="block text-sm font-medium text-gray-700">Czas / Dzień</label>
-                <input
-                    id="time"
-                    type="text"
-                    placeholder="np. 10:00, Dzień 2"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                    required
-                />
-            </div>
-
-            <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">Opis Aktywności</label>
-                <textarea
-                    id="description"
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                    placeholder="np. Rezerwacja biletów na Muzeum Narodowe"
-                    required
-                />
-            </div>
-
-            <div>
-                <label htmlFor="assignedTo" className="block text-sm font-medium text-gray-700">Osoba Odpowiedzialna</label>
-                <select
-                    id="assignedTo"
-                    value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
-                >
-                    <option value="Wszyscy">Wszyscy</option>
-                    {participants.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                    ))}
-                </select>
-            </div>
-
-            <div className="flex space-x-3 pt-2">
-                <button
-                    type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex-1"
-                >
-                    Zapisz Aktywność
-                </button>
-                <button
-                    type="button"
-                    onClick={onCancel}
-                    className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-                >
-                    Anuluj
-                </button>
-            </div>
-        </form>
-    </div>
+    <form onSubmit={handleSubmit} className="space-y-4 border p-6 rounded-xl bg-white shadow-sm">
+      <h3 className="text-xl font-bold text-blue-800">Nowa Aktywność</h3>
+      
+      <input 
+        className="w-full p-2 border rounded text-black" 
+        placeholder="Co będziemy robić?" 
+        value={name} 
+        onChange={e => setName(e.target.value)} 
+        required 
+      />
+      
+      <div className="grid grid-cols-2 gap-4">
+        <input 
+          type="time" 
+          className="p-2 border rounded text-black" 
+          value={time} 
+          onChange={e => setTime(e.target.value)} 
+          required 
+        />
+        <input 
+          className="w-full p-2 border rounded text-black" 
+          placeholder="Lokalizacja" 
+          value={location} 
+          onChange={e => setLocation(e.target.value)} 
+        />
+      </div>
+      
+      <input 
+        type="number" 
+        className="w-full p-2 border rounded text-black" 
+        placeholder="Koszt" 
+        value={price} 
+        onChange={e => setPrice(e.target.value)} 
+      />
+      
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition">
+          Dodaj do planu
+        </button>
+        <button type="button" onClick={onCancel} className="flex-1 bg-gray-200 text-black py-2 rounded hover:bg-gray-300 transition">
+          Anuluj
+        </button>
+      </div>
+    </form>
   );
 }

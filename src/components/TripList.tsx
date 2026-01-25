@@ -1,32 +1,25 @@
-// src/components/TripList.tsx
-
-import { Trip } from "@/lib/data";
+import { FullTrip } from './TripTabs';
 
 interface TripListProps {
-  trips: Trip[];
-  onSelect: (trip: Trip) => void;
-  selectedId: number | undefined;
+  trips: FullTrip[];
+  activeTripId: number | null; // Sprawdź czy tu jest ID
+  onSelectTrip: (id: number) => void;
 }
 
-export default function TripList({ trips, onSelect, selectedId }: TripListProps) {
+export default function TripList({ trips, activeTripId, onSelectTrip }: TripListProps) {
   return (
-    <ul className="space-y-2">
-      {trips.map((trip) => (
-        <li 
+    <div className="flex flex-col gap-2">
+      {trips.map(trip => (
+        <div 
           key={trip.id}
-          // Styl zaznaczonego wyjazdu
-          className={`p-3 rounded-lg cursor-pointer transition duration-150 ease-in-out 
-            ${trip.id === selectedId 
-                ? 'bg-blue-100 border-l-4 border-blue-600 font-semibold text-blue-800' 
-                : 'bg-gray-50 hover:bg-gray-100'
-            }`
-          }
-          onClick={() => onSelect(trip)}
+          onClick={() => onSelectTrip(trip.id)}
+          className={`p-3 rounded-xl cursor-pointer transition ${
+            activeTripId === trip.id ? 'bg-blue-100 text-blue-700 font-bold' : 'text-gray-600 hover:bg-gray-100'
+          }`}
         >
-          <div className="text-lg">{trip.name}</div>
-          <div className="text-sm text-gray-500">{trip.destination}</div>
-        </li>
+          {trip.name}
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
