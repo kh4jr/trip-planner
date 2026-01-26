@@ -1,25 +1,41 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const tripId = searchParams.get('tripId');
+  if (!tripId) return NextResponse.json([]);
+  
+  const activities = await prisma.activity.findMany({
+    where: { tripId: parseInt(tripId) },
+    orderBy: { time: 'asc' }
+  });
+  return NextResponse.json(activities);
+}
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
-
   try {
-    const { name, time, tripId } = await req.json();
-    
+    const body = await req.json();
+    console.log("Próba zapisu aktywności:", body); // To zobaczysz w terminalu
+
     const newActivity = await prisma.activity.create({
       data: {
-        name,
-        time: new Date(time),
-        tripId: parseInt(tripId)
+        name: body.name,
+        time: new Date(body.time),
+        tripId: parseInt(body.tripId)
       }
     });
 
     return NextResponse.json(newActivity);
   } catch (error) {
-    return NextResponse.json({ error: "Błąd zapisu aktywności" }, { status: 500 });
+    // Sprawdzamy, czy error jest instancją klasy Error, aby bezpiecznie pobrać wiadomość
+    const errorMessage = error instanceof Error ? error.message : "Wystąpił nieoczekiwany błąd";
+    
+    console.error("BŁĄD PRISMA:", errorMessage);
+    
+    return NextResponse.json(
+      { error: errorMessage }, 
+      { status: 500 }
+    );
   }
 }

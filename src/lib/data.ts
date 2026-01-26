@@ -23,6 +23,7 @@ export interface Activity {
   time: string; 
   location: string; 
   price: number; 
+  trip: Trip;
   participants: string[]; 
 }
 

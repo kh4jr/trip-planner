@@ -15,19 +15,19 @@ generator client {
 
 model Participant {
   id     Int    @id @default(autoincrement())
-  name    String
-  email   String @default("")
-  role    String @default("member") 
-  trip    Trip   @relation(fields: [tripId], references: [id])
-  tripId  Int    
+  name   String
+  email  String @default("")
+  role   String @default("member")
+  trip   Trip   @relation(fields: [tripId], references: [id])
+  tripId Int
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String?
-  trips     Trip[]   
+  id       Int     @id @default(autoincrement())
+  email    String  @unique
+  password String
+  name     String?
+  trips    Trip[]
 }
 
 model Trip {
@@ -39,12 +39,66 @@ model Trip {
   userId       Int?
   user         User?         @relation(fields: [userId], references: [id])
   participants Participant[]
+  activities   Activity[]
+  expenses     Expense[]
+  notes        Note[]
+  items        TripItem[]
+  images       TripImage[]
 }
 
 model Activity {
-  id        Int      @id @default(autoincrement())
-  name      String   
-  time      DateTime 
-  tripId    Int      
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id     Int      @id @default(autoincrement())
+  name   String
+  time   DateTime
+  tripId Int
+  trip   Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id          Int    @id @default(autoincrement())
+  description String
+  amount      Float
+  paidBy      String
+  tripId      Int
+  trip        Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model Note {
+  id          Int      @id @default(autoincrement())
+  content     String
+  author      String   // Kto dodał notatkę
+  isCompleted Boolean  @default(false)
+  completedBy String?  // Kto skreślił notatkę
+  createdAt   DateTime @default(now())
+  tripId      Int
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model TripItem {
+  id          Int      @id @default(autoincrement())
+  name        String
+  category    String   // np. "Ubrania", "Dokumenty"
+  isPacked    Boolean  @default(false)
+  packedBy    String?  // Opcjonalnie: kto spakował
+  tripId      Int
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model Todo {
+  id          Int      @id @default(autoincrement())
+  tripId      Int
+  content     String
+  category    String   @default("Inne") // np. Ubrania, Dokumenty, Elektronika
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model TripImage {
+  id          Int      @id @default(autoincrement())
+  url         String   // Link do zdjęcia
+  caption     String?  // Podpis
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+  tripId      Int
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
