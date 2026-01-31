@@ -3,12 +3,15 @@
 import { useState, useEffect } from "react";
 import { signOut } from "next-auth/react";
 import TripList from '@/components/TripList'; 
-import TripTabs, { FullTrip } from "@/components/TripTabs"; 
 import AuthModal from "@/components/AuthModal";
-import CreateTripModal from "@/components/CreateTripModal"; // Upewnij się, że masz ten komponent!
+import CreateTripModal from "@/components/CreateTripModal";
 import { Activity, Expense, Note, Todo, Participant } from "@prisma/client";
 import { Session } from "next-auth";
 import Link from 'next/link';
+import { FullTrip } from "@/types/fullTrip";
+import TripTabs from "@/components/TripTabs";
+
+
 
 interface TripManagerProps {
   initialTrips: FullTrip[];
@@ -30,24 +33,26 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
   
   const [currentTripParticipants, setCurrentTripParticipants] = useState<Participant[]>([]);
-  
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  // Logika blokady edycji
-  type SessionUser = { id: string; name?: string | null; email?: string | null };
 
   const sessionUserId = session?.user?.id ? Number(session.user.id) : null;
-  
-  const isReadOnly = !sessionUserId || (selectedTrip?.userId !== sessionUserId);
-  // --- FILTROWANIE (NAPRAWIONE) ---
-  // Filtrujemy stan 'trips', aby widzieć nowo dodane wyjazdy bez odświeżania strony
-  const displayedTrips = activeTab === 'my' 
-    ? trips.filter(t => t.userId === sessionUserId) 
-    : trips;
+
+  // 🔁 KLUCZOWA ZMIANA
+  const isReadOnly =
+    !sessionUserId || selectedTrip?.ownerId !== sessionUserId;
+
+  // --- FILTROWANIE ---
+  const displayedTrips =
+    activeTab === 'my'
+      ? trips.filter(t => t.ownerId === sessionUserId)
+      : trips;
 
   const userTrips = trips.filter((t: FullTrip) => {
-  // Pokazujemy wycieczki gdzie user jest właścicielem LUB uczestnikiem
-  return t.userId === sessionUserId || t.participants.some(p => p.userId === sessionUserId);
-});
+    return (
+      t.ownerId === sessionUserId ||
+      t.participants.some(p => p.userId === sessionUserId)
+    );
+  });
 
   useEffect(() => {
     if (selectedTrip) {    
@@ -79,7 +84,7 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
           setCurrentTripParticipants(selectedTrip.participants || []);
         });
     }
-}, [selectedTrip]);
+  }, [selectedTrip]);
 
   useEffect(() => {
     const loadTodos = async () => {
@@ -97,13 +102,19 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
     loadTodos();
   }, [selectedTrip?.id]);
 
-  // --- HANDLERY (ZARZĄDZANIE STANEM) ---
-  
-  const handleAddActivity = (newAct: Activity) => setActivities(prev => [...prev, newAct]);
-  const handleDeleteActivity = async (activityId: number) => setActivities(prev => prev.filter(a => a.id !== activityId));
-  const handleAddExpense = (newExp: Expense) => setExpenses(prev => [...prev, newExp]);
-  const handleAddNote = (newNote: Note) => setNotes(prev => [...prev, newNote]);
-  
+  // --- HANDLERY ---
+  const handleAddActivity = (newAct: Activity) =>
+    setActivities(prev => [...prev, newAct]);
+
+  const handleDeleteActivity = async (activityId: number) =>
+    setActivities(prev => prev.filter(a => a.id !== activityId));
+
+  const handleAddExpense = (newExp: Expense) =>
+    setExpenses(prev => [...prev, newExp]);
+
+  const handleAddNote = (newNote: Note) =>
+    setNotes(prev => [...prev, newNote]);
+
   const handleAddTodo = async (content: string, category: string) => {
     if (!selectedTrip) return;
     const response = await fetch('/api/todo', {
@@ -113,22 +124,31 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
     });
     if (response.ok) {
       const newTodo = await response.json();
-      setTodos((prev) => [...prev, newTodo]);
+      setTodos(prev => [...prev, newTodo]);
     }
   };
 
-  const handleRemoveExpense = (id: number) => setExpenses(prev => prev.filter(x => x.id !== id));
-  const handleUpdateNote = (id: number, done: boolean) => setNotes(prev => prev.map(n => n.id === id ? {...n, isCompleted: done} : n));
-  const handleRemoveNote = (id: number) => setNotes(prev => prev.filter(x => x.id !== id));
-  const handleUpdateTodo = (id: number, done: boolean) => setTodos(prev => prev.map(t => t.id === id ? {...t, isCompleted: done} : t));
-  const handleRemoveTodo = (id: number) => setTodos(prev => prev.filter(x => x.id !== id));
+  const handleRemoveExpense = (id: number) =>
+    setExpenses(prev => prev.filter(x => x.id !== id));
+
+  const handleUpdateNote = (id: number, done: boolean) =>
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, isCompleted: done } : n));
+
+  const handleRemoveNote = (id: number) =>
+    setNotes(prev => prev.filter(x => x.id !== id));
+
+  const handleUpdateTodo = (id: number, done: boolean) =>
+    setTodos(prev => prev.map(t => t.id === id ? { ...t, isCompleted: done } : t));
+
+  const handleRemoveTodo = (id: number) =>
+    setTodos(prev => prev.filter(x => x.id !== id));
 
   const handleTripCreated = (newTrip: FullTrip) => {
-  setTrips(prev => [...prev, newTrip]);
-  setSelectedTrip(newTrip);
-  setIsCreating(false);
-  setSelectedIds([]); // Czyścimy zaznaczone osoby
-};
+    setTrips(prev => [...prev, newTrip]);
+    setSelectedTrip(newTrip);
+    setIsCreating(false);
+    setSelectedIds([]);
+  };
 
   return (
   <div className="!w-full !max-w-none min-h-screen bg-[#F8FAFC] !m-0 !p-0">

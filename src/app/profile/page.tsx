@@ -34,7 +34,7 @@ export default async function ProfilePage() {
 
   const userTrips = await db.trip.findMany({
     where: { 
-      userId: userIdNumber 
+      ownerId: userIdNumber 
     },
     include: {
       expenses: true,

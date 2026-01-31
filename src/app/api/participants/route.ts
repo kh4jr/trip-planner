@@ -8,12 +8,11 @@ export async function GET(req: Request) {
   if (!tripId) return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
 
   const participants = await db.participant.findMany({
-    where: {
-      trips: {
-        some: { id: Number(tripId) } // Szukamy w tabeli łączącej Many-to-Many
-      }
-    }
-  });
+  where: {
+    tripId: Number(tripId),
+  },
+});
+
 
   return NextResponse.json(participants);
 }

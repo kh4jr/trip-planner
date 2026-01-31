@@ -4,15 +4,8 @@ import { useState } from "react";
 import { addExpense, addNote } from "@/lib/actions";
 import { Trip, Participant, Activity, Expense, Note, Todo, TripItem } from "@prisma/client";
 import { ChevronDown } from "lucide-react";
+import { FullTrip } from "@/types/fullTrip";
 
-export type FullTrip = Trip & { 
-    participants: Participant[] 
-    activities: Activity[];
-    expenses: Expense[];
-    notes: Note[];
-    items: TripItem[];
-    todos: Todo[];
-};
 
 interface ExpenseStat {
   name: string;
@@ -136,37 +129,46 @@ export default function TripTabs(props: TripTabsProps) {
   };
 
   const handleSaveExpense = async () => {
-    if (!expenseDesc || !expenseAmount || !paidBy) return;
-    setLoading(true);
-    try {
-      const saved = await addExpense(props.trip.id.toString(), {
-        description: expenseDesc,
-        amount: parseFloat(expenseAmount),
-        paidBy: paidBy,
-        category: expenseCategory
-      });
-      props.onAddExpense(saved);
-      setExpenseDesc("");
-      setExpenseAmount("");
-      setIsAddingExpense(false);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!expenseDesc || !expenseAmount || !paidBy) return;
+
+  setLoading(true);
+  try {
+    const saved = await addExpense(props.trip.id, {
+      description: expenseDesc,
+      amount: parseFloat(expenseAmount),
+      paidBy: paidBy,
+      category: expenseCategory,
+    });
+
+    props.onAddExpense(saved);
+    setExpenseDesc("");
+    setExpenseAmount("");
+    setIsAddingExpense(false);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSaveNote = async () => {
-    if (!newNoteText.trim()) return;
-    setLoading(true);
-    try {
-      const saved = await addNote(props.trip.id.toString(), newNoteText, props.userName);
-      props.onAddNote(saved);
-      setNewNoteText("");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!newNoteText.trim()) return;
+
+  setLoading(true);
+  try {
+    const saved = await addNote(
+      props.trip.id,
+      newNoteText,
+      props.trip.ownerId // albo sessionUserId
+    );
+    props.onAddNote(saved);
+    setNewNoteText("");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSaveTodo = async () => {
     if (!newTodoText.trim()) return;
@@ -468,7 +470,9 @@ export default function TripTabs(props: TripTabsProps) {
                     <p className={`!text-blue-900 font-bold text-lg text-left flex-1 ${note.isCompleted ? "line-through !text-slate-400" : ""}`}>{note.content}</p>
                   </div>
                   <div className="w-full mt-auto pt-4 border-t border-blue-50/50 flex justify-between items-center text-[10px] font-black uppercase !text-slate-400">
-                    <span className="truncate">{new Date(note.createdAt).toLocaleDateString()} • {note.author}</span>
+                    <span 
+                        className="truncate">{new Date(note.createdAt).toLocaleDateString()} • autor #{note.authorId}
+                    </span>
                     <button onClick={() => props.onDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-110">Usuń</button>
                   </div>
                 </div>

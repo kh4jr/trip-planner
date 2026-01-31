@@ -1,111 +1,68 @@
 import { db } from "@/lib/db";
 import TripManager from "@/components/TripManager";
 import { getServerSession } from "next-auth";
-import { authOptions } from "./api/auth/[...nextauth]/route";
-import { revalidatePath } from "next/cache";
-import {
-  Participant,
-  Expense,
-  TripItem,
-  Activity,
-  Note,
-  TripImage,
-  Todo,
-} from "@prisma/client";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-interface FullTrip {
-  id: number;
-  name: string;
-  title: string;
-  description: string;
-  location: string;
-  destination: string;
-  startDate: Date;
-  endDate: Date;
-  userId: number; // Tutaj musi być number
-  participants: Participant[];
-  expenses: Expense[];
-  items: TripItem[];
-  activities: Activity[];
-  notes: Note[];
-  images: TripImage[];
-  todos: Todo[];
-}
+import { revalidatePath } from "next/cache";
+import { FullTrip } from "@/types/fullTrip";
+
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
-  
-  // 1️⃣ KLUCZOWA ZMIANA: Konwersja ID sesji (String) na Number
+  console.log("SESSION:", session);
+  console.log("SESSION USER:", session?.user);
+  console.log("SESSION USER ID:", session?.user?.id);
+
   const rawUserId = session?.user?.id;
   const userId = rawUserId ? Number(rawUserId) : null;
-  const currentUserName = session?.user?.name || "Anonim";
 
-  // 2️⃣ Pobieranie wycieczek
   const allTripsData = await db.trip.findMany({
-    include: {
-      participants: true,
-      expenses: true,
-      items: true,
-      activities: true,
-      notes: true,
-      images: true,
-    },
-    orderBy: { startDate: "asc" },
-  });
+  include: {
+    participants: true,
+    expenses: true,
+    notes: true,
+    activities: true,
+    items: true,
+    images: true,
+    owner: true,
+  },
+  orderBy: {
+    startDate: "asc",
+  },
+});
 
-  // 3️⃣ Pobieranie uczestników
   const allAvailableParticipants = await db.participant.findMany({
-    where: {
-      userId: { gt: 0 },
-    },
-    orderBy: { name: "asc" },
-  });
+  orderBy: { name: "asc" },
+});
 
-  // 4️⃣ Upsert (Naprawione ID)
-  if (userId && !isNaN(userId)) {
-    try {
-      await db.participant.upsert({
-        // Wymuszamy typ liczbowy, aby zgadzał się z Int w Prisma
-        where: { userId: userId as number }, 
-        update: { name: currentUserName },
-        create: {
-          userId: userId as number,
-          name: currentUserName,
-          role: "OWNER",
-        },
-      });
-    } catch (e) {
-      console.error("Upsert failed, but continuing...", e);
-    }
-  }
-
-  // 5️⃣ Mapowanie (Dodane zabezpieczenie typów)
   const tripsFromDb: FullTrip[] = allTripsData.map((trip) => ({
-    id: trip.id,
-    name: trip.name,
-    title: trip.name || "",
-    description: trip.description || "",
-    location: trip.location || "",
-    destination: trip.destination || "",
-    startDate: new Date(trip.startDate),
-    endDate: new Date(trip.endDate),
-    userId: Number(trip.userId), // Wymuszamy Number
-    participants: trip.participants ?? [],
-    expenses: trip.expenses ?? [],
-    items: trip.items ?? [],
-    activities: trip.activities ?? [],
-    notes: trip.notes ?? [],
-    images: trip.images ?? [],
-    todos: [],
-  }));
+  id: trip.id,
+  name: trip.name,
+  description: trip.description,
+  location: trip.location,
+  destination: trip.destination,
+  startDate: new Date(trip.startDate),
+  endDate: new Date(trip.endDate),
+  ownerId: trip.ownerId,
+  createdAt: trip.createdAt, // ← TO JEST TEN JEBANY BRAKUJĄCY ELEMENT
+  participants: trip.participants ?? [],
+  expenses: trip.expenses ?? [],
+  items: trip.items ?? [],
+  activities: trip.activities ?? [],
+  notes: trip.notes ?? [],
+  images: trip.images ?? [],
+  todos: [],
+}));
 
-  // 6️⃣ Filtracja (Teraz oba to Number, więc zadziała)
+
+
+  // 6️⃣ Filtracja (owner + participant)
   const userTrips = tripsFromDb.filter((trip) => {
-    const isOwner = userId !== null && trip.userId === userId;
+    const isOwner = userId !== null && trip.ownerId === userId;
     const isParticipant = trip.participants.some(
-      (p) => p.userId === userId
+      (p) => p.email === session?.user?.email
     );
     return isOwner || isParticipant;
   });
@@ -126,25 +83,4 @@ export default async function Home() {
       </footer>
     </main>
   );
-}
-
-export async function addExpense(
-  tripId: number,
-  data: { description: string; amount: number; paidBy: string }
-) {
-  try {
-    const expense = await db.expense.create({
-      data: {
-        description: data.description,
-        amount: data.amount,
-        paidBy: data.paidBy,
-        tripId,
-      },
-    });
-    revalidatePath("/");
-    return expense;
-  } catch (error) {
-    console.error("Błąd podczas dodawania wydatku:", error);
-    throw new Error("Nie udało się zapisać wydatku");
-  }
 }

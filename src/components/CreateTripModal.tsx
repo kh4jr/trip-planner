@@ -1,7 +1,7 @@
 "use client";
 
 import { SetStateAction, useState, Dispatch } from "react";
-import { FullTrip } from "./TripTabs";
+import { FullTrip } from "@/types/fullTrip";
 import { Participant } from "@prisma/client";
 
 interface CreateTripModalProps {

@@ -17,26 +17,34 @@ export interface TripFormData {
   }[];
 }
 
-export async function createTrip(data: TripFormData) {
+export async function createTrip(
+  data: TripFormData,
+  ownerId: number
+) {
   try {
     const trip = await db.trip.create({
       data: {
         name: data.name,
         destination: data.destination,
-        location: data.location || "",
-        description: data.description || "",
+        location: data.location || null,
+        description: data.description || null,
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
+
+        // 🔴 TO BYŁ BRAK
+        ownerId: ownerId,
+
         participants: {
           create: data.participants.map((p) => ({
             name: p.name,
-            email: p.email || '',
-            role: p.role || 'member'
-          }))
-        }
-      }
-    })
-    revalidatePath('/')
+            email: p.email || "",
+            role: p.role || "member",
+          })),
+        },
+      },
+    });
+
+    revalidatePath("/");
     return trip;
   } catch (error) {
     console.error("Błąd bazy:", error);
@@ -44,22 +52,28 @@ export async function createTrip(data: TripFormData) {
   }
 }
 
-export async function addExpense(tripId: string, data: { description: string, amount: number, paidBy: string, category: string }) {
-  try {
-    const expense = await db.expense.create({
-      data: {
-        description: data.description,
-        amount: data.amount,
-        paidBy: data.paidBy,
-        category: data.category,
-        tripId: parseInt(tripId), 
-      },
-    });
-    revalidatePath('/'); 
-    return expense; 
-  } catch (error) {
-    throw new Error("Nie udało się zapisać wydatku"); 
+
+export async function addExpense(
+  tripId: number,
+  data: {
+    description: string;
+    amount: number;
+    paidBy: string;
+    category: string;
   }
+) {
+  const expense = await db.expense.create({
+    data: {
+      description: data.description,
+      amount: data.amount,
+      paidBy: data.paidBy,
+      category: data.category,
+      tripId: tripId,
+    },
+  });
+
+  revalidatePath("/");
+  return expense;
 }
 
 export async function deleteExpense(expenseId: number) {
@@ -74,13 +88,23 @@ export async function deleteExpense(expenseId: number) {
   }
 }
 
-export async function addNote(tripId: string, content: string, author: string) {
+export async function addNote(
+  tripId: number,
+  content: string,
+  authorId: number
+) {
   const note = await db.note.create({
-    data: { content, author, tripId: parseInt(tripId) },
+    data: {
+      content,
+      tripId,
+      authorId, // ✅ TO JEST KLUCZ
+    },
   });
-  revalidatePath('/');
+
+  revalidatePath("/");
   return note;
 }
+
 
 export async function toggleNote(noteId: number, isCompleted: boolean) {
   await db.note.update({
