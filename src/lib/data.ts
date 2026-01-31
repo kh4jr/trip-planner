@@ -55,3 +55,4 @@ export interface Note {
 export type TripFormData = Omit<Trip, 'id' | 'participants'> & {
   participants: Omit<Participant, 'id' | 'tripId'>[];
 };
+

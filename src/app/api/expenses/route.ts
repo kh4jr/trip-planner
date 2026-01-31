@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tripId = searchParams.get('tripId');
   if (!tripId) return NextResponse.json([]);
 
-  const expenses = await prisma.expense.findMany({
+  const expenses = await db.expense.findMany({
     where: { tripId: parseInt(tripId) }
   });
   return NextResponse.json(expenses);
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const newExpense = await prisma.expense.create({
+    const newExpense = await db.expense.create({
       data: {
         description: body.description,
         amount: parseFloat(body.amount),

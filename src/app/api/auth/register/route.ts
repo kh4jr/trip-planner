@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 
@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const { email, name, password } = body;
 
     // 1. Sprawdź czy użytkownik już istnieje
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await db.user.findUnique({
       where: { email }
     });
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 3. Zapisz w bazie
-    const newUser = await prisma.user.create({
+    const newUser = await db.user.create({
       data: {
         email,
         name,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db"; 
+import { db } from "@/lib/db"; 
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const todo = await prisma.todo.create({
+    const todo = await db.todo.create({
       data: {
         content,
         category: category || "Inne",
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
     }
 
-    const todos = await prisma.todo.findMany({
+    const todos = await db.todo.findMany({
       where: {
         tripId: Number(tripId),
       },

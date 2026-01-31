@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db"; // upewnij się, że masz poprawny import do instancji prisma
+import { db } from "@/lib/db"; // upewnij się, że masz poprawny import do instancji prisma
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
     }
 
-    const notes = await prisma.note.findMany({
+    const notes = await db.note.findMany({
       where: {
         tripId: parseInt(tripId),
       },
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   const { id, isCompleted } = await request.json();
-  const updated = await prisma.note.update({
+  const updated = await db.note.update({
     where: { id: Number(id) },
     data: { isCompleted }
   });
@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
-  await prisma.note.delete({
+  await db.note.delete({
     where: { id: Number(id) }
   });
   return Response.json({ success: true });

@@ -1,16 +1,10 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
 }
 
 model Participant {
@@ -18,8 +12,8 @@ model Participant {
   name   String
   email  String @default("")
   role   String @default("member")
-  trip   Trip   @relation(fields: [tripId], references: [id])
-  tripId Int
+  userId Int?    @unique
+  trips  Trip[]  @relation("TripParticipants")
 }
 
 model User {
@@ -33,17 +27,19 @@ model User {
 model Trip {
   id           Int           @id @default(autoincrement())
   name         String
+  description  String?
+  location     String?
   destination  String
   startDate    DateTime
   endDate      DateTime
-  userId       Int?
-  user         User?         @relation(fields: [userId], references: [id])
-  participants Participant[]
+  userId       Int      @unique
   activities   Activity[]
   expenses     Expense[]
   notes        Note[]
-  items        TripItem[]
+  participants Participant[] @relation("TripParticipants")
+  user         User?         @relation(fields: [userId], references: [id])
   images       TripImage[]
+  items        TripItem[]
 }
 
 model Activity {
@@ -59,6 +55,7 @@ model Expense {
   description String
   amount      Float
   paidBy      String
+  category    String @default("other")
   tripId      Int
   trip        Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
@@ -66,39 +63,39 @@ model Expense {
 model Note {
   id          Int      @id @default(autoincrement())
   content     String
-  author      String   // Kto dodał notatkę
+  author      String
   isCompleted Boolean  @default(false)
-  completedBy String?  // Kto skreślił notatkę
+  completedBy String?
   createdAt   DateTime @default(now())
   tripId      Int
   trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model TripItem {
-  id          Int      @id @default(autoincrement())
-  name        String
-  category    String   // np. "Ubrania", "Dokumenty"
-  isPacked    Boolean  @default(false)
-  packedBy    String?  // Opcjonalnie: kto spakował
-  tripId      Int
-  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id       Int     @id @default(autoincrement())
+  name     String
+  category String
+  isPacked Boolean @default(false)
+  packedBy String?
+  tripId   Int
+  trip     Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model Todo {
   id          Int      @id @default(autoincrement())
   tripId      Int
   content     String
-  category    String   @default("Inne") // np. Ubrania, Dokumenty, Elektronika
+  category    String   @default("Inne")
   isCompleted Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 
 model TripImage {
-  id          Int      @id @default(autoincrement())
-  url         String   // Link do zdjęcia
-  caption     String?  // Podpis
-  uploadedBy  String
-  createdAt   DateTime @default(now())
-  tripId      Int
-  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  url        String
+  caption    String?
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  tripId     Int
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }

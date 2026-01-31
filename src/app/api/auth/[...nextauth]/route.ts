@@ -1,10 +1,18 @@
 import NextAuth from "next-auth";
-import { AuthOptions } from "next-auth";
+import { AuthOptions, DefaultSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import bcrypt from "bcrypt";
 
-// Musi być export const, aby page.tsx mógł to zaimportować!
+// --- NAPRAWA BŁĘDU ts(2339) ---
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"]
+  }
+}
+
 export const authOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
@@ -16,7 +24,7 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
+        const user = await db.user.findUnique({
           where: { email: credentials.email }
         });
 
@@ -33,6 +41,21 @@ export const authOptions: AuthOptions = {
       }
     })
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        // Teraz TypeScript już nie będzie podkreślał .id
+        session.user.id = token.id as string;
+      }
+      return session;
+    }
+  },
   session: { strategy: "jwt" },
   pages: { signIn: "/" },
   secret: process.env.NEXTAUTH_SECRET,

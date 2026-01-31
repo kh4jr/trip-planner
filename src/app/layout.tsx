@@ -1,4 +1,5 @@
 'use client';
+import { db } from '@/lib/db';
 import './globals.css'; 
 import Providers from './providers';
 
@@ -9,9 +10,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pl" suppressHydrationWarning>
-      <body>
-        {
-        /* OPATULAMY CAŁĄ APLIKACJĘ W PROVIDERS */}
+      <body className="min-h-screen w-full">
+        {/* OPATULAMY CAŁĄ APLIKACJĘ W PROVIDERS */}
         <Providers> 
           {children}
         </Providers>

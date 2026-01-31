@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tripId = searchParams.get('tripId');
   if (!tripId) return NextResponse.json([]);
   
-  const activities = await prisma.activity.findMany({
+  const activities = await db.activity.findMany({
     where: { tripId: parseInt(tripId) },
     orderBy: { time: 'asc' }
   });
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("Próba zapisu aktywności:", body); // To zobaczysz w terminalu
 
-    const newActivity = await prisma.activity.create({
+    const newActivity = await db.activity.create({
       data: {
         name: body.name,
         time: new Date(body.time),
