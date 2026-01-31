@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { content, category, tripId } = body;
+    const { content, tripId } = body;
 
     if (!content || !tripId) {
       return NextResponse.json(
@@ -13,10 +13,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const todo = await db.todo.create({
+    const todo = await db.tripItem.create({
       data: {
-        content,
-        category: category || "Inne",
+        name: content,          // ← content mapujemy na name
         tripId: Number(tripId),
         isCompleted: false,
       },
@@ -41,14 +40,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
     }
 
-    const todos = await db.todo.findMany({
+    const todos = await db.tripItem.findMany({
       where: {
         tripId: Number(tripId),
       },
       orderBy: {
-        createdAt: "asc",
+        id: "asc", // albo name: "asc"
       },
     });
+
 
     return NextResponse.json(todos);
   } catch (error) {

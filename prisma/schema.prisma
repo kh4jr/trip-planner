@@ -8,12 +8,13 @@ datasource db {
 }
 
 model User {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
-
-  trips Trip[] @relation("OwnedTrips")
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
+  name      String?
+  password  String
+  trips     Trip[]  @relation("OwnedTrips")
 }
+
 
 model Trip {
   id          Int      @id @default(autoincrement())

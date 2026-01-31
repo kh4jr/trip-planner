@@ -7,16 +7,15 @@ interface BudgetModuleProps {
     expenses: Expense[];
     participants: Participant[];
     onAddExpense: (expense: Expense) => void;
-    participantsMap: Map<number, Participant>; // Zmiana string na number
+    participantsMap: Map<number, Participant>;
 }
 
 const calculateBalance = (expenses: Expense[], participants: Participant[]) => {
-    const balance = new Map<number, number>(); // ID to number
+    const balance = new Map<number, number>();
     participants.forEach(p => balance.set(p.id, 0));
 
     expenses.forEach(expense => {
-        // W bazie mamy 'amount' (Float/Int). Upewniamy się, że payerId to number
-        const payerId = Number(expense.paidBy); // Dopasowanie do pola z lib/data.ts
+        const payerId = Number(expense.paidBy); 
         const individualShare = expense.amount / (participants.length || 1);
 
         balance.set(payerId, (balance.get(payerId) || 0) + expense.amount);
@@ -33,7 +32,6 @@ export default function BudgetModule({ expenses, participants, participantsMap, 
     const [isAddingExpense, setIsAddingExpense] = useState(false);
     const [desc, setDesc] = useState('');
     const [amount, setAmount] = useState('');
-    // Stan początkowy dla selecta (ID to number)
     const [paidBy, setPaidBy] = useState<number>(participants[0]?.id || 0);
 
     const currentBalance = useMemo(() => calculateBalance(expenses, participants), [expenses, participants]);
@@ -46,7 +44,7 @@ export default function BudgetModule({ expenses, participants, participantsMap, 
             id: Date.now(),
             description: desc,
             amount: parseFloat(amount),
-            paidBy: String(paidBy), // Przechowujemy jako string w danych, ale ID to number
+            paidBy: String(paidBy), 
             date: new Date().toISOString().split('T')[0],
             tripId: tripId, 
             category: "General"

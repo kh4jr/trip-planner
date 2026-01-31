@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { addExpense, addNote } from "@/lib/actions";
-import { Trip, Participant, Activity, Expense, Note, Todo, TripItem } from "@prisma/client";
+import { Activity, Expense, Note, TripItem } from "@prisma/client";
 import { ChevronDown } from "lucide-react";
 import { FullTrip } from "@/types/fullTrip";
 
@@ -20,7 +20,7 @@ interface TripTabsProps {
   expenses: Expense[];
   tripItems: TripItem[];
   notes: Note[];
-  todos: Todo[];
+  todos: TripItem[];
   isReadOnly: boolean;
   onDeleteTrip: (id: number) => Promise<void>;
   onAddActivity: (activity: Activity) => void; 
@@ -93,12 +93,13 @@ export default function TripTabs(props: TripTabsProps) {
     percentage: total > 0 ? Math.round((stat.value / total) * 100) : 0
   }));
 
-  const groupedTodos = (props.todos || []).reduce((acc, todo) => {
-    const cat = todo.category || "Inne";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(todo);
-    return acc;
-  }, {} as Record<string, Todo[]>);
+  const safeTodos = Array.isArray(props.todos) ? props.todos : [];
+
+  const groupedTodos: Record<string, typeof safeTodos> = {
+    Wszystkie: safeTodos,
+  };
+
+
 
   // --- HANDLERS ---
   const handleSaveActivity = async () => {
@@ -158,10 +159,10 @@ export default function TripTabs(props: TripTabsProps) {
   setLoading(true);
   try {
     const saved = await addNote(
-      props.trip.id,
-      newNoteText,
-      props.trip.ownerId // albo sessionUserId
-    );
+    props.trip.id,
+    newNoteText
+  );
+
     props.onAddNote(saved);
     setNewNoteText("");
   } finally {
@@ -171,15 +172,17 @@ export default function TripTabs(props: TripTabsProps) {
 
 
   const handleSaveTodo = async () => {
-    if (!newTodoText.trim()) return;
-    setLoading(true);
-    try {
-      await props.onAddTodo(newTodoText, todoCategory); 
-      setNewTodoText("");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!newTodoText.trim()) return;
+
+  setLoading(true);
+  try {
+    await props.onAddTodo(newTodoText, todoCategory);
+    setNewTodoText("");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const settlement: { from: string; to: string; amount: number }[] = [];
   const balances = participants.map(p => {
@@ -471,7 +474,7 @@ export default function TripTabs(props: TripTabsProps) {
                   </div>
                   <div className="w-full mt-auto pt-4 border-t border-blue-50/50 flex justify-between items-center text-[10px] font-black uppercase !text-slate-400">
                     <span 
-                        className="truncate">{new Date(note.createdAt).toLocaleDateString()} • autor #{note.authorId}
+                        className="truncate">{new Date(note.createdAt).toLocaleDateString()} • autor: organizator
                     </span>
                     <button onClick={() => props.onDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-110">Usuń</button>
                   </div>
@@ -525,10 +528,33 @@ export default function TripTabs(props: TripTabsProps) {
                   </div>
                   <div className="p-4 divide-y divide-blue-50/50 flex-1">
                     {items.map((todo) => (
-                      <div key={todo.id} className="flex items-center gap-5 p-5 hover:bg-blue-50/30 rounded-2xl group transition-colors">
-                        <input type="checkbox" checked={todo.isCompleted} onChange={() => props.onToggleTodo(todo.id, !todo.isCompleted)} className="w-7 h-7 rounded-xl cursor-pointer shrink-0" />
-                        <span className={`flex-1 font-bold text-left ${todo.isCompleted ? "line-through !text-slate-300" : "!text-blue-900"}`}>{todo.content}</span>
-                        <button onClick={() => props.onDeleteTodo(todo.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:rotate-12 transition-all">🗑️</button>
+                      <div
+                        key={todo.id}
+                        className="flex items-center gap-5 p-5 hover:bg-blue-50/30 rounded-2xl group transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={todo.isCompleted}
+                          onChange={() =>
+                            props.onToggleTodo(todo.id, !todo.isCompleted)
+                          }
+                          className="w-7 h-7 rounded-xl cursor-pointer shrink-0"
+                        />
+                        <span
+                          className={`flex-1 font-bold text-left ${
+                            todo.isCompleted
+                              ? "line-through !text-slate-300"
+                              : "!text-blue-900"
+                          }`}
+                        >
+                          {todo.name}
+                        </span>
+                        <button
+                          onClick={() => props.onDeleteTodo(todo.id)}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:rotate-12 transition-all"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     ))}
                   </div>

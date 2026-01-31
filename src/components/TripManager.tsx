@@ -5,11 +5,13 @@ import { signOut } from "next-auth/react";
 import TripList from '@/components/TripList'; 
 import AuthModal from "@/components/AuthModal";
 import CreateTripModal from "@/components/CreateTripModal";
-import { Activity, Expense, Note, Todo, Participant } from "@prisma/client";
+import { Activity, Expense, Note, TripItem, Participant } from "@prisma/client";
 import { Session } from "next-auth";
 import Link from 'next/link';
 import { FullTrip } from "@/types/fullTrip";
 import TripTabs from "@/components/TripTabs";
+import FriendsSelection from "@/components/FriendsSelection";
+
 
 
 
@@ -26,8 +28,8 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [todos, setTodos] = useState<Todo[]>([]);
-  
+  const [todos, setTodos] = useState<TripItem[]>([]);
+
   const [isCreating, setIsCreating] = useState(false); 
   const [isLoggingIn, setIsLoggingIn] = useState(false); 
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
@@ -48,11 +50,14 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
       : trips;
 
   const userTrips = trips.filter((t: FullTrip) => {
-    return (
-      t.ownerId === sessionUserId ||
-      t.participants.some(p => p.userId === sessionUserId)
-    );
-  });
+  if (!session?.user?.email) return false;
+
+  return (
+    t.ownerId === sessionUserId ||
+    t.participants.some(p => p.email === session.user!.email)
+  );
+});
+
 
   useEffect(() => {
     if (selectedTrip) {    
@@ -74,7 +79,8 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
       fetch(`/api/todo?tripId=${selectedTrip.id}`)
         .then(res => res.json())
         .then(data => setTodos(data))
-        .catch(() => setTodos(selectedTrip.todos || []));
+        .catch(() => setTodos(selectedTrip.items || []));
+
 
       fetch(`/api/participants?tripId=${selectedTrip.id}`)
         .then(res => res.json())
@@ -248,13 +254,15 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
               activeTripId={selectedTrip?.id || null} 
               onSelectTrip={(id) => setSelectedTrip(trips.find(t => t.id === id) || null)} 
             />
-            
-            <button 
-              onClick={() => setIsCreating(true)}
-              className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95"
-            >
-              <span>+</span> Nowy Wyjazd
-            </button>
+              <button 
+                onClick={() => setIsCreating(true)}
+                className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95"
+              >
+                <span>+</span> Nowy Wyjazd
+              </button>
+            <div className="mt-6">
+              <FriendsSelection />
+            </div>
           </div>
         </aside>
 

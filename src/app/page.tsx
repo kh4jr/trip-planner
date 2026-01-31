@@ -3,7 +3,7 @@ import TripManager from "@/components/TripManager";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-import { revalidatePath } from "next/cache";
+//import { revalidatePath } from "next/cache";
 import { FullTrip } from "@/types/fullTrip";
 
 

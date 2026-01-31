@@ -1,6 +1,4 @@
-// src/components/AuthButton.tsx
-
-"use client"; // Komponent musi być klientem, aby używać hooków
+"use client";
 
 import { useSession, signOut } from 'next-auth/react';
 import { useState } from 'react';

@@ -20,8 +20,9 @@ export async function POST(req: Request) {
         description: body.description,
         amount: parseFloat(body.amount),
         paidBy: body.paidBy,
-        tripId: parseInt(body.tripId)
-      }
+        category: body.category || "other", // ← DODANE
+        tripId: parseInt(body.tripId),
+      },
     });
     return NextResponse.json(newExpense);
   } catch (error) {

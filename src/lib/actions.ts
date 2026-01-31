@@ -90,14 +90,12 @@ export async function deleteExpense(expenseId: number) {
 
 export async function addNote(
   tripId: number,
-  content: string,
-  authorId: number
+  content: string
 ) {
   const note = await db.note.create({
     data: {
       content,
       tripId,
-      authorId, // ✅ TO JEST KLUCZ
     },
   });
 
@@ -119,16 +117,19 @@ export async function deleteNote(noteId: number) {
   revalidatePath('/');
 }
 
-export async function addTodoAction(tripId: number, content: string, category: string) {
+export async function addTodoAction(
+  tripId: number,
+  name: string
+) {
   try {
-    const todo = await db.todo.create({
+    const todo = await db.tripItem.create({
       data: {
-        content,
-        category,
+        name,
         tripId,
         isCompleted: false,
       },
     });
+
     revalidatePath('/');
     return todo;
   } catch (error) {
@@ -137,8 +138,9 @@ export async function addTodoAction(tripId: number, content: string, category: s
   }
 }
 
+
 export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
-  await db.todo.update({
+  await db.tripItem.update({
     where: { id: todoId },
     data: { isCompleted }
   });
@@ -146,7 +148,7 @@ export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
 }
 
 export async function deleteTodoAction(todoId: number) {
-  await db.todo.delete({ where: { id: todoId } });
+  await db.tripItem.delete({ where: { id: todoId } });
   revalidatePath('/');
 }
 

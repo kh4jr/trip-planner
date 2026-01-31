@@ -6,15 +6,13 @@ import {
   Activity,
   Note,
   TripImage,
-  Todo,
 } from "@prisma/client";
 
 export type FullTrip = Trip & {
   participants: Participant[];
   expenses: Expense[];
-  items: TripItem[];
+  items: TripItem[];      // ← to są todos
   activities: Activity[];
   notes: Note[];
   images: TripImage[];
-  todos: Todo[];
 };
