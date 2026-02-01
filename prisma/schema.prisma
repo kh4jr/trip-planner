@@ -7,14 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        Int     @id @default(autoincrement())
-  email     String  @unique
-  name      String?
-  password  String
-  trips     Trip[]  @relation("OwnedTrips")
+enum FriendStatus {
+  PENDING
+  ACCEPTED
 }
 
+model User {
+  id       Int      @id @default(autoincrement())
+  email    String   @unique
+  name     String?
+  password String
+  trips    Trip[]   @relation("OwnedTrips")
+  friends  Friend[] @relation("UserFriends")
+  friendOf Friend[] @relation("FriendUsers")
+}
 
 model Trip {
   id          Int      @id @default(autoincrement())
@@ -105,4 +111,17 @@ model TripImage {
 
   tripId Int
   trip   Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model Friend {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  friendId  Int
+  status    FriendStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+
+  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendUsers", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
 }

@@ -1,68 +1,152 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Friend = {
   id: number;
-  name: string;
+  name: string | null;
   email: string;
   tripsTogether: number;
 };
 
-const MOCK_FRIENDS: Friend[] = [
-  { id: 1, name: "Anna Kowalska", email: "anna@mail.com", tripsTogether: 3 },
-  { id: 2, name: "Piotr Nowak", email: "piotr@mail.com", tripsTogether: 1 },
-];
+type SearchUser = {
+  id: number;
+  name: string | null;
+  email: string;
+};
 
-export default function FriendsSection() {
+export default function FriendsSelection({
+  refreshKey,
+}: {
+  refreshKey: number;
+}) {
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchUser[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  /* ========================
+     POBIERANIE ZNAJOMYCH
+  ======================== */
+  useEffect(() => {
+    fetchFriends();
+  }, [refreshKey]); // 🔥 KLUCZOWE
+
+  async function fetchFriends() {
+    const res = await fetch("/api/friends");
+    if (res.ok) {
+      setFriends(await res.json());
+    }
+  }
+
+  /* ========================
+     WYSZUKIWANIE USERÓW
+  ======================== */
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoading(true);
+      const res = await fetch(`/api/users/search?q=${query}`);
+      if (res.ok) {
+        setResults(await res.json());
+      }
+      setLoading(false);
+    }, 400);
+
+    return () => clearTimeout(delay);
+  }, [query]);
+
+  async function handleAddFriend(friendId: number) {
+    await fetch("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ friendId }),
+    });
+  }
+
+  async function handleRemoveFriend(friendId: number) {
+    await fetch("/api/friends", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ friendId }),
+    });
+    fetchFriends();
+  }
+
   return (
-    <div className="mt-8 bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-sm font-black uppercase tracking-widest text-blue-300">
-          Znajomi
-        </h3>
+    <div className="mt-6 bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
+      <h3 className="text-sm font-black uppercase tracking-widest text-blue-300 mb-4">
+        Znajomi
+      </h3>
 
-        <button className="text-xs font-black text-blue-600 hover:text-blue-800 transition">
-          + Szukaj znajomych
-        </button>
-      </div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Szukaj znajomych..."
+        className="w-full mb-4 px-4 py-2 rounded-xl border border-blue-100 text-sm"
+      />
 
-      {MOCK_FRIENDS.length === 0 ? (
+      {/* 🔍 WYNIKI WYSZUKIWANIA */}
+      {query && (
+        <div className="space-y-2 mb-4">
+          {loading && <p className="text-xs text-slate-400">Szukam...</p>}
+          {results.map((u) => (
+            <div
+              key={u.id}
+              className="flex justify-between items-center p-3 rounded-xl bg-blue-50"
+            >
+              <div>
+                <p className="font-bold text-blue-900">
+                  {u.name || u.email}
+                </p>
+                <p className="text-xs text-blue-400">{u.email}</p>
+              </div>
+              <button
+                onClick={() => handleAddFriend(u.id)}
+                className="text-xs font-black px-3 py-2 rounded-lg bg-green-600 text-white"
+              >
+                Dodaj
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 👥 LISTA ZNAJOMYCH */}
+      {friends.length === 0 ? (
         <p className="text-sm text-slate-400 font-bold">
-          Nie masz jeszcze żadnych znajomych
+          Nie masz jeszcze znajomych
         </p>
       ) : (
         <div className="space-y-3">
-          {MOCK_FRIENDS.map((friend) => (
+          {friends.map((f) => (
             <div
-              key={friend.id}
-              className="flex items-center justify-between p-4 rounded-xl bg-blue-50/40 hover:bg-blue-50 transition"
+              key={f.id}
+              className="flex justify-between items-center p-4 rounded-xl bg-blue-50/40"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">
-                  {friend.name.charAt(0)}
-                </div>
-
-                <div className="text-left">
-                  <p className="font-black text-blue-900 leading-tight">
-                    {friend.name}
-                  </p>
-                  <p className="text-[11px] text-blue-400 font-bold">
-                    Wspólne wyjazdy: {friend.tripsTogether}
-                  </p>
-                </div>
+              <div>
+                <p className="font-black text-blue-900">
+                  {f.name || f.email}
+                </p>
+                <p className="text-xs text-blue-400 font-bold">
+                  Wspólne wyjazdy: {f.tripsTogether}
+                </p>
               </div>
-
               <div className="flex gap-2">
                 <Link
-                  href="#"
-                  className="text-xs font-black px-3 py-2 rounded-lg bg-white border border-blue-100 text-blue-600 hover:bg-blue-100 transition"
+                  href={`/profile/${f.id}`}
+                  className="text-xs font-black px-3 py-2 rounded-lg bg-white border border-blue-100"
                 >
                   Profil
                 </Link>
-
                 <button
-                  className="text-xs font-black px-3 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition"
+                  onClick={() => handleRemoveFriend(f.id)}
+                  className="text-xs font-black px-3 py-2 rounded-lg bg-red-50 text-red-600"
                 >
                   Usuń
                 </button>
@@ -74,3 +158,6 @@ export default function FriendsSection() {
     </div>
   );
 }
+
+
+

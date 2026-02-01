@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { FullTrip } from "@/types/fullTrip";
 import TripTabs from "@/components/TripTabs";
 import FriendsSelection from "@/components/FriendsSelection";
-
+import FriendsInvites from "@/components/FriendsInvites";
 
 
 
@@ -36,6 +36,8 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
   
   const [currentTripParticipants, setCurrentTripParticipants] = useState<Participant[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [friendsVersion, setFriendsVersion] = useState(0);
+
 
   const sessionUserId = session?.user?.id ? Number(session.user.id) : null;
 
@@ -261,7 +263,14 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
                 <span>+</span> Nowy Wyjazd
               </button>
             <div className="mt-6">
-              <FriendsSelection />
+              <FriendsSelection 
+                refreshKey={friendsVersion}
+              />
+            </div>
+            <div className="mt-6">
+              <FriendsInvites
+                onAction={() => setFriendsVersion(v => v + 1)}
+              />
             </div>
           </div>
         </aside>
