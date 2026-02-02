@@ -2,161 +2,189 @@
 
 import { useState, useEffect } from "react";
 import { signOut } from "next-auth/react";
-import TripList from '@/components/TripList'; 
+import TripList from "@/components/TripList";
 import AuthModal from "@/components/AuthModal";
 import CreateTripModal from "@/components/CreateTripModal";
-import { Activity, Expense, Note, TripItem, Participant } from "@prisma/client";
+import { Activity, Expense, Note, TripItem } from "@prisma/client";
 import { Session } from "next-auth";
-import Link from 'next/link';
+import Link from "next/link";
 import { FullTrip } from "@/types/fullTrip";
 import TripTabs from "@/components/TripTabs";
 import FriendsSelection from "@/components/FriendsSelection";
 import FriendsInvites from "@/components/FriendsInvites";
 
-
-
 interface TripManagerProps {
   initialTrips: FullTrip[];
   session: Session | null;
-  allAvailablePeople: Participant[];
+  allAvailablePeople: {
+    id: number;
+    role: string;
+    user: {
+      id: number;
+      name: string | null;
+      email: string;
+    };
+  }[];
 }
 
-export default function TripManager({ initialTrips, session, allAvailablePeople }: TripManagerProps) {
+export default function TripManager({
+  initialTrips,
+  session,
+  allAvailablePeople,
+}: TripManagerProps) {
   const [trips, setTrips] = useState<FullTrip[]>(initialTrips);
-  const [selectedTrip, setSelectedTrip] = useState<FullTrip | null>(initialTrips[0] || null);
-  
+  const [selectedTrip, setSelectedTrip] = useState<FullTrip | null>(
+    initialTrips[0] || null
+  );
+
   const [activities, setActivities] = useState<Activity[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [todos, setTodos] = useState<TripItem[]>([]);
 
-  const [isCreating, setIsCreating] = useState(false); 
-  const [isLoggingIn, setIsLoggingIn] = useState(false); 
-  const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
-  
-  const [currentTripParticipants, setCurrentTripParticipants] = useState<Participant[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "my">("all");
+
+  const [currentTripParticipants, setCurrentTripParticipants] =
+    useState<FullTrip["participants"]>([]);
+
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [friendsVersion, setFriendsVersion] = useState(0);
 
+  const sessionUserId = session?.user?.id
+    ? Number(session.user.id)
+    : null;
 
-  const sessionUserId = session?.user?.id ? Number(session.user.id) : null;
-
-  // 🔁 KLUCZOWA ZMIANA
   const isReadOnly =
     !sessionUserId || selectedTrip?.ownerId !== sessionUserId;
 
-  // --- FILTROWANIE ---
-  const displayedTrips =
-    activeTab === 'my'
-      ? trips.filter(t => t.ownerId === sessionUserId)
-      : trips;
+const allTrips: FullTrip[] = trips;
 
-  const userTrips = trips.filter((t: FullTrip) => {
-  if (!session?.user?.email) return false;
+// moje wyjazdy = te, w których uczestniczę
+const myTrips: FullTrip[] = trips.filter(trip =>
+  trip.participants.some(
+    p => p.user.email === session?.user?.email
+  )
+);
 
-  return (
-    t.ownerId === sessionUserId ||
-    t.participants.some(p => p.email === session.user!.email)
-  );
-});
-
+// co pokazujemy w liście
+const displayedTrips: FullTrip[] =
+  activeTab === "my" ? myTrips : allTrips;
 
   useEffect(() => {
-    if (selectedTrip) {    
-      fetch(`/api/activities?tripId=${selectedTrip.id}`)
-        .then(res => res.json())
-        .then(data => setActivities(data))
-        .catch(err => console.error("Błąd ładowania aktywności:", err));
-
-      fetch(`/api/expenses?tripId=${selectedTrip.id}`)
-        .then(res => res.json())
-        .then(data => setExpenses(data))
-        .catch(err => console.error("Błąd ładowania wydatków:", err));
-
-      fetch(`/api/notes?tripId=${selectedTrip.id}`)
-        .then(res => res.json())
-        .then(data => setNotes(data))
-        .catch(() => setNotes(selectedTrip.notes || []));
-
-      fetch(`/api/todo?tripId=${selectedTrip.id}`)
-        .then(res => res.json())
-        .then(data => setTodos(data))
-        .catch(() => setTodos(selectedTrip.items || []));
-
-
-      fetch(`/api/participants?tripId=${selectedTrip.id}`)
-        .then(res => res.json())
-        .then(data => setCurrentTripParticipants(data))
-        .catch(err => {
-          console.error("Błąd ładowania uczestników:", err);
-          setCurrentTripParticipants(selectedTrip.participants || []);
-        });
+    if (
+      selectedTrip &&
+      !displayedTrips.some((t) => t.id === selectedTrip.id)
+    ) {
+      setSelectedTrip(displayedTrips[0] || null);
     }
+  }, [activeTab, displayedTrips, selectedTrip]);
+
+  useEffect(() => {
+    if (!selectedTrip) return;
+
+    fetch(`/api/activities?tripId=${selectedTrip.id}`)
+      .then((res) => res.json())
+      .then(setActivities)
+      .catch(() => setActivities([]));
+
+    fetch(`/api/expenses?tripId=${selectedTrip.id}`)
+      .then((res) => res.json())
+      .then(setExpenses)
+      .catch(() => setExpenses([]));
+
+    fetch(`/api/notes?tripId=${selectedTrip.id}`)
+      .then((res) => res.json())
+      .then(setNotes)
+      .catch(() => setNotes(selectedTrip.notes || []));
+
+    fetch(`/api/todo?tripId=${selectedTrip.id}`)
+      .then((res) => res.json())
+      .then(setTodos)
+      .catch(() => setTodos(selectedTrip.items || []));
+
+    fetch(`/api/participants?tripId=${selectedTrip.id}`)
+      .then((res) => res.json())
+      .then(setCurrentTripParticipants)
+      .catch(() =>
+        setCurrentTripParticipants(selectedTrip.participants || [])
+      );
   }, [selectedTrip]);
 
-  useEffect(() => {
-    const loadTodos = async () => {
-      if (!selectedTrip?.id) return;
-      try {
-        const res = await fetch(`/api/todo?tripId=${selectedTrip.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setTodos(data);
-        }
-      } catch (err) {
-        console.error("Nie udało się pobrać zadań", err);
-      }
-    };
-    loadTodos();
-  }, [selectedTrip?.id]);
+  const handleAddActivity = (a: Activity) =>
+    setActivities((prev) => [...prev, a]);
 
-  // --- HANDLERY ---
-  const handleAddActivity = (newAct: Activity) =>
-    setActivities(prev => [...prev, newAct]);
+  const handleDeleteActivity = async (id: number) =>
+    setActivities((prev) => prev.filter((a) => a.id !== id));
 
-  const handleDeleteActivity = async (activityId: number) =>
-    setActivities(prev => prev.filter(a => a.id !== activityId));
+  const handleAddExpense = (e: Expense) =>
+    setExpenses((prev) => [...prev, e]);
 
-  const handleAddExpense = (newExp: Expense) =>
-    setExpenses(prev => [...prev, newExp]);
-
-  const handleAddNote = (newNote: Note) =>
-    setNotes(prev => [...prev, newNote]);
+  const handleAddNote = (n: Note) =>
+    setNotes((prev) => [...prev, n]);
 
   const handleAddTodo = async (content: string, category: string) => {
     if (!selectedTrip) return;
-    const response = await fetch('/api/todo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, category, tripId: selectedTrip.id }),
+    const res = await fetch("/api/todo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        category,
+        tripId: selectedTrip.id,
+      }),
     });
-    if (response.ok) {
-      const newTodo = await response.json();
-      setTodos(prev => [...prev, newTodo]);
+    if (res.ok) {
+      const todo = await res.json();
+      setTodos((prev) => [...prev, todo]);
     }
   };
 
-  const handleRemoveExpense = (id: number) =>
-    setExpenses(prev => prev.filter(x => x.id !== id));
-
-  const handleUpdateNote = (id: number, done: boolean) =>
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, isCompleted: done } : n));
-
-  const handleRemoveNote = (id: number) =>
-    setNotes(prev => prev.filter(x => x.id !== id));
-
-  const handleUpdateTodo = (id: number, done: boolean) =>
-    setTodos(prev => prev.map(t => t.id === id ? { ...t, isCompleted: done } : t));
-
-  const handleRemoveTodo = (id: number) =>
-    setTodos(prev => prev.filter(x => x.id !== id));
-
   const handleTripCreated = (newTrip: FullTrip) => {
-    setTrips(prev => [...prev, newTrip]);
+    setTrips((prev) => [...prev, newTrip]);
     setSelectedTrip(newTrip);
     setIsCreating(false);
     setSelectedIds([]);
   };
+
+  const handleRemoveExpense = (id: number) => {
+  setExpenses(prev => prev.filter(e => e.id !== id));
+};
+
+  const handleUpdateNote = (id: number, completed: boolean) => {
+    setNotes(prev =>
+      prev.map(n =>
+        n.id === id ? { ...n, isCompleted: completed } : n
+      )
+    );
+  };
+
+  const handleRemoveNote = (id: number) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const handleUpdateTodo = (id: number, completed: boolean) => {
+    setTodos(prev =>
+      prev.map(t =>
+        t.id === id ? { ...t, isCompleted: completed } : t
+      )
+    );
+  };
+
+  const handleRemoveTodo = (id: number) => {
+    setTodos(prev => prev.filter(t => t.id !== id));
+  };
+
+  const handleDeleteTrip = async (id: number) => {
+    if (!confirm("Na pewno usunąć wyjazd?")) return;
+
+    await fetch(`/api/trips/${id}`, { method: "DELETE" });
+
+    setTrips(prev => prev.filter(t => t.id !== id));
+    setSelectedTrip(null);
+  };
+
 
   return (
   <div className="!w-full !max-w-none min-h-screen bg-[#F8FAFC] !m-0 !p-0">
@@ -243,81 +271,93 @@ export default function TripManager({ initialTrips, session, allAvailablePeople 
       </div>
 
       {/* UKŁAD DWUKOLUMNOWY */}
-      <div className="flex flex-col lg:flex-row gap-8 !w-full !items-start !justify-start">
-        
-        {/* LEWA KOLUMNA - Fixed na desktopie poniżej headera */}
-        <aside className="w-full lg:w-80 shrink-0 lg:fixed lg:top-56 lg:z-40">
-          <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
-            <h2 className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] mb-6 text-left">
-              {activeTab === 'my' ? 'Twoje Podróże' : 'Dostępne Podróże'}
-            </h2>
-            <TripList 
-              trips={displayedTrips} 
-              activeTripId={selectedTrip?.id || null} 
-              onSelectTrip={(id) => setSelectedTrip(trips.find(t => t.id === id) || null)} 
-            />
-              <button 
-                onClick={() => setIsCreating(true)}
-                className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95"
-              >
-                <span>+</span> Nowy Wyjazd
-              </button>
-            <div className="mt-6">
-              <FriendsSelection 
-                refreshKey={friendsVersion}
-              />
-            </div>
-            <div className="mt-6">
-              <FriendsInvites
-                onAction={() => setFriendsVersion(v => v + 1)}
-              />
-            </div>
-          </div>
-        </aside>
+      {/* UKŁAD DWUKOLUMNOWY */}
+<div className="flex flex-col lg:flex-row gap-8 !w-full !items-start !justify-start">
+  
+  {/* LEWA KOLUMNA - Fixed na desktopie poniżej headera */}
+  <aside className="w-full lg:w-[480px] shrink-0 lg:fixed lg:top-56 lg:z-40">
+    <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
+      <h2 className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] mb-6 text-left">
+        {activeTab === 'my' ? 'Twoje Podróże' : 'Dostępne Podróże'}
+      </h2>
 
-        {/* PRAWA KOLUMNA - Przesunięta o szerokość asida (lg:!ml-[340px]) */}
-        <main className="flex-1 !w-full lg:!ml-[350px] min-w-0 !mr-0 pb-20">
-          {selectedTrip ? (
-            <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-100/50 border border-blue-50 p-8 md:p-10 !w-full min-h-[600px]">
-              <TripTabs 
-                trip={selectedTrip} 
-                userName={session?.user?.name || "Gość"}
-                userTrips={userTrips}
-                activities={activities}
-                expenses={expenses}
-                notes={notes}
-                todos={todos}
-                onAddExpense={handleAddExpense}
-                onAddActivity={handleAddActivity}
-                onDeleteActivity={handleDeleteActivity}
-                onAddNote={handleAddNote}
-                onAddTodo={handleAddTodo}
-                onRemoveExpense={handleRemoveExpense}
-                onUpdateNote={handleUpdateNote}
-                onRemoveNote={handleRemoveNote}
-                onUpdateTodo={handleUpdateTodo}
-                onRemoveTodo={handleRemoveTodo}
-                isReadOnly={isReadOnly}
-                tripItems={[]}
-                onAddItem={() => {}}
-                onDeleteNote={handleRemoveNote}
-                onToggleNote={async () => {}}
-                onToggleItem={() => {}}
-                onToggleTodo={handleUpdateTodo}
-                onDeleteTodo={handleRemoveTodo}
-                onDeleteTrip={async () => {}}
-              />
-            </div>
-          ) : (
-            <div className="h-[500px] !w-full border-4 border-dashed border-blue-50 rounded-[3.5rem] bg-blue-50/20 flex flex-col items-center justify-center text-center p-10">
-              <div className="text-5xl mb-6 opacity-40">🗺️</div>
-              <h3 className="text-xl font-black text-blue-900 mb-2">Brak wybranego celu</h3>
-              <p className="text-blue-300 font-bold max-w-xs">Wybierz wyjazd z listy po lewej stronie, aby zarządzać planem.</p>
-            </div>
-          )}
-        </main>
+      <TripList
+        trips={displayedTrips}
+        activeTripId={selectedTrip?.id || null}
+        onSelectTrip={(id) =>
+          setSelectedTrip(trips.find(t => t.id === id) || null)
+        }
+      />
 
+      <button 
+        onClick={() => setIsCreating(true)}
+        className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95"
+      >
+        <span>+</span> Nowy Wyjazd
+      </button>
+
+      <div className="mt-6">
+        <FriendsSelection
+          refreshKey={friendsVersion}
+          onSelectTrip={(id) =>
+            setSelectedTrip(trips.find(t => t.id === id) || null)
+          }
+        />
       </div>
+      
+      <div className="mt-6">
+        <FriendsInvites onAction={() => setFriendsVersion(v => v + 1)} />
+      </div>
+    </div>
+  </aside>
+
+  {/* PRAWA KOLUMNA - Przesunięta o szerokość asida */}
+  <main className="flex-1 !w-full lg:!ml-[500px] min-w-0 !mr-0 pb-20">
+    {selectedTrip ? (
+      <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-100/50 border border-blue-50 p-8 md:p-10 !w-full min-h-[600px]">
+        <TripTabs
+          trip={selectedTrip}
+          userName={session?.user?.name || "Gość"}
+
+          activities={activities}
+          expenses={expenses}
+          notes={notes}
+          todos={todos}
+
+          isReadOnly={isReadOnly}
+
+          onAddActivity={handleAddActivity}
+          onDeleteActivity={handleDeleteActivity}
+
+          onAddExpense={handleAddExpense}
+          onRemoveExpense={handleRemoveExpense}
+
+          onAddNote={handleAddNote}
+          onToggleNote={handleUpdateNote}
+          onDeleteNote={handleRemoveNote}
+
+          onAddTodo={handleAddTodo}
+          onToggleTodo={handleUpdateTodo}
+          onDeleteTodo={handleRemoveTodo}
+
+          onDeleteTrip={handleDeleteTrip}
+        />
+      </div>
+    ) : (
+      <div className="h-[500px] !w-full border-4 border-dashed border-blue-50 rounded-[3.5rem] bg-blue-50/20 flex flex-col items-center justify-center text-center p-10">
+        <div className="text-5xl mb-6 opacity-40">🗺️</div>
+        <h3 className="text-xl font-black text-blue-900 mb-2">
+          Brak wybranego celu
+        </h3>
+        <p className="text-blue-300 font-bold max-w-xs">
+          Wybierz wyjazd z listy po lewej stronie, aby zarządzać planem.
+        </p>
+      </div>
+    )}
+  </main>
+
+</div>
+
     </div>
 
     {/* MODAL TWORZENIA */}

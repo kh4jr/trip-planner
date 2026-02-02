@@ -13,10 +13,13 @@ enum FriendStatus {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  email    String   @unique
+  id       Int     @id @default(autoincrement())
+  email    String  @unique
   name     String?
   password String
+
+  participant Participant?
+
   trips    Trip[]   @relation("OwnedTrips")
   friends  Friend[] @relation("UserFriends")
   friendOf Friend[] @relation("FriendUsers")
@@ -34,7 +37,7 @@ model Trip {
   ownerId Int
   owner   User @relation("OwnedTrips", fields: [ownerId], references: [id], onDelete: Cascade)
 
-  participants Participant[]
+  participants Participant[] @relation("TripParticipants")
   expenses     Expense[]
   notes        Note[]
   activities   Activity[]
@@ -45,13 +48,13 @@ model Trip {
 }
 
 model Participant {
-  id    Int    @id @default(autoincrement())
-  name  String
-  email String @default("")
-  role  String @default("member")
+  id   Int    @id @default(autoincrement())
+  role String @default("member")
 
-  tripId Int
-  trip   Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id])
+
+  trips Trip[] @relation("TripParticipants")
 
   expenses Expense[]
   notes    Note[]

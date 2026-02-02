@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/lib/db";
 
-interface TripRequestBody {
+interface CreateTripBody {
   name?: string;
   title?: string;
   description?: string;
@@ -11,22 +11,21 @@ interface TripRequestBody {
   endDate: string;
   location?: string;
   destination?: string;
+  participantIds?: number[];
 }
 
+/**
+ * ✅ GET — ZAWSZE 100% WYJAZDÓW
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id ? Number(session.user.id) : null;
-
-  if (!userId) {
-    return NextResponse.json([], { status: 200 });
-  }
-
   const trips = await db.trip.findMany({
-    where: {
-      ownerId: userId,
-    },
     include: {
-      participants: true,
+      owner: true,
+      participants: {
+        include: {
+          user: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -36,30 +35,54 @@ export async function GET() {
   return NextResponse.json(trips);
 }
 
-
+/**
+ * ✅ POST — POPRAWNE TWORZENIE WYJAZDU
+ * - owner ZAWSZE participant
+ * - zero łamania relacji Prisma
+ */
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const sessionUserId = session?.user?.id ? Number(session.user.id) : null;
+    const userId = session?.user?.id ? Number(session.user.id) : null;
 
-    if (!sessionUserId || !session?.user?.email) {
+    if (!userId) {
       return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
     }
 
-    const body: TripRequestBody = await req.json();
-    const { name, title, description, startDate, endDate, location, destination } = body;
+    const body: CreateTripBody = await req.json();
+    const {
+      name,
+      title,
+      description,
+      startDate,
+      endDate,
+      location,
+      destination,
+      participantIds = [],
+    } = body;
 
-    const dbUser = await db.user.findUnique({
-      where: { id: sessionUserId },
+    // 🔹 owner = participant (MUSI ISTNIEĆ)
+    const ownerParticipant = await db.participant.findUnique({
+      where: { userId },
     });
 
-    if (!dbUser) {
-      return NextResponse.json({ error: "Użytkownik nie istnieje" }, { status: 404 });
+    if (!ownerParticipant) {
+      return NextResponse.json(
+        { error: "Użytkownik nie ma profilu Participant" },
+        { status: 400 }
+      );
     }
 
-    console.log("DB OBJECT:", Object.keys(db));
+    // 🔹 inni uczestnicy (TYLKO ISTNIEJĄCY)
+    const otherParticipants = await db.participant.findMany({
+      where: {
+        userId: {
+          in: participantIds.filter((id) => id !== userId),
+        },
+      },
+    });
 
-    const newTrip = await db.trip.create({
+    const trip = await db.trip.create({
       data: {
         name: name || title || "Nowy wyjazd",
         description: description || "",
@@ -67,30 +90,30 @@ export async function POST(req: Request) {
         endDate: new Date(endDate),
         location: location || "Brak lokalizacji",
         destination: destination || location || "Brak lokalizacji",
-        ownerId: dbUser.id,
+        ownerId: userId,
 
         participants: {
-          create: [
-            {
-              name: dbUser.name || "Organizer",
-              email: dbUser.email,
-              role: "owner",
-            },
+          connect: [
+            { id: ownerParticipant.id },
+            ...otherParticipants.map((p) => ({ id: p.id })),
           ],
         },
       },
       include: {
-        participants: true,
+        participants: {
+          include: {
+            user: true,
+          },
+        },
+        owner: true,
       },
     });
 
-    return NextResponse.json(newTrip);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Nieznany błąd serwera";
-    console.error("ADD TRIP ERROR:", message);
-
+    return NextResponse.json(trip);
+  } catch (error) {
+    console.error("CREATE TRIP ERROR:", error);
     return NextResponse.json(
-      { error: "Błąd serwera", details: message },
+      { error: "Błąd serwera" },
       { status: 500 }
     );
   }

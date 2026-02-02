@@ -5,36 +5,86 @@ import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!meId) {
     return NextResponse.json([], { status: 200 });
   }
 
   const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q");
+  const query = searchParams.get("q");
 
-  if (!q || q.length < 2) {
+  if (!query || query.length < 2) {
     return NextResponse.json([], { status: 200 });
   }
 
+  // 1️⃣ znajdź userów pasujących do query
   const users = await db.user.findMany({
     where: {
-      AND: [
-        { id: { not: Number(session.user.id) } },
-        {
-          OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
-          ],
-        },
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { email: { contains: query, mode: "insensitive" } },
       ],
+      NOT: { id: meId }, // ❗ nie pokazuj siebie
     },
     select: {
       id: true,
       name: true,
       email: true,
     },
-    take: 10,
+    take: 5,
   });
 
-  return NextResponse.json(users);
+  if (users.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const userIds = users.map((u) => u.id);
+
+  // 2️⃣ pobierz WSZYSTKIE relacje Friend między mną a wynikami
+  const friendships = await db.friend.findMany({
+    where: {
+      OR: [
+        {
+          userId: meId,
+          friendId: { in: userIds },
+        },
+        {
+          userId: { in: userIds },
+          friendId: meId,
+        },
+      ],
+    },
+  });
+
+  // 3️⃣ helper do wyliczenia statusu
+  function getStatus(otherUserId: number) {
+    const relation = friendships.find(
+      (f) =>
+        (f.userId === meId && f.friendId === otherUserId) ||
+        (f.userId === otherUserId && f.friendId === meId)
+    );
+
+    if (!relation) return "NONE";
+
+    if (relation.status === "ACCEPTED") {
+      return "ACCEPTED";
+    }
+
+    // status = PENDING
+    if (relation.userId === meId) {
+      return "PENDING_SENT";
+    }
+
+    return "PENDING_RECEIVED";
+  }
+
+  // 4️⃣ response z runtime field
+  const result = users.map((u) => ({
+    ...u,
+    friendshipStatus: getStatus(u.id),
+  }));
+
+  return NextResponse.json(result);
 }
+

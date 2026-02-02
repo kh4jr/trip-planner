@@ -4,12 +4,11 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import bcrypt from "bcrypt";
 
-// --- NAPRAWA BŁĘDU ts(2339) ---
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-    } & DefaultSession["user"]
+    } & DefaultSession["user"];
   }
 }
 
@@ -19,27 +18,40 @@ export const authOptions: AuthOptions = {
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
         const user = await db.user.findUnique({
-          where: { email: credentials.email }
+          where: { email: credentials.email },
         });
 
         if (!user || !user.password) return null;
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
         if (!isPasswordValid) return null;
+
+        const participant = await db.participant.findUnique({
+          where: { userId: user.id },
+        });
+
+        if (!participant) {
+          await db.participant.create({
+            data: { userId: user.id },
+          });
+        }
 
         return {
           id: user.id.toString(),
           email: user.email,
           name: user.name,
         };
-      }
-    })
+      },
+    }),
   ],
   callbacks: {
     async jwt({ token, user }) {
@@ -50,11 +62,10 @@ export const authOptions: AuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        // Teraz TypeScript już nie będzie podkreślał .id
         session.user.id = token.id as string;
       }
       return session;
-    }
+    },
   },
   session: { strategy: "jwt" },
   pages: { signIn: "/" },

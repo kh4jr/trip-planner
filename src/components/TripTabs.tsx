@@ -15,31 +15,31 @@ interface ExpenseStat {
 interface TripTabsProps {
   trip: FullTrip;
   userName: string;
-  userTrips: FullTrip[];
+
   activities: Activity[];
   expenses: Expense[];
-  tripItems: TripItem[];
   notes: Note[];
   todos: TripItem[];
+
   isReadOnly: boolean;
+
   onDeleteTrip: (id: number) => Promise<void>;
-  onAddActivity: (activity: Activity) => void; 
-  onAddExpense: (expense: Expense) => void;
-  onAddItem: (item: TripItem) => void;
-  onAddNote: (note: Note) => void;
-  onAddTodo: (content: string, category: string) => Promise<void>;
+
+  onAddActivity: (activity: Activity) => void;
   onDeleteActivity: (id: number) => Promise<void>;
-  onToggleItem: (id: number) => void;
-  onToggleNote: (noteId: number, isCompleted: boolean) => void;
+
+  onAddExpense: (expense: Expense) => void;
+  onRemoveExpense: (id: number) => void;
+
+  onAddNote: (note: Note) => void;
+  onToggleNote: (noteId: number, completed: boolean) => void;
   onDeleteNote: (id: number) => void;
+
+  onAddTodo: (content: string, category: string) => Promise<void>;
   onToggleTodo: (id: number, completed: boolean) => void;
   onDeleteTodo: (id: number) => void;
-  onRemoveExpense: (id: number) => void;
-  onUpdateNote: (id: number, completed: boolean) => void;
-  onRemoveNote: (id: number) => void;
-  onUpdateTodo: (id: number, completed: boolean) => void;
-  onRemoveTodo: (id: number) => void;
 }
+
 
 const TABS = [
   { id: 'plan', label: 'Plan Podróży' },
@@ -74,7 +74,12 @@ export default function TripTabs(props: TripTabsProps) {
   const [isListOpen, setIsListOpen] = useState(false)
 
   // --- LOGIKA OBLICZEŃ (Naprawione typowanie i zmienne) ---
-  const participants = props.trip.participants || [];
+  const participants = (props.trip.participants || []).map(p => ({
+  id: p.id,
+  role: p.role,
+  name: p.user.name ?? p.user.email, // 👈 KLUCZ
+  email: p.user.email,
+}));
   const currentExpenses = props.expenses || [];
   const total = currentExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const participantCount = participants.length > 0 ? participants.length : 1;
