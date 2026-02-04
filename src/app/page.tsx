@@ -63,20 +63,11 @@ export default async function Home() {
     todos: [],
   }));
 
-  const userTrips = tripsFromDb.filter((trip) => {
-    const isOwner = userId !== null && trip.ownerId === userId;
-    const isParticipant = trip.participants.some(
-      (p) => p.user.email === session?.user?.email
-    );
-
-    return isOwner || isParticipant;
-  });
-
   return (
     <main className="min-h-screen flex flex-col bg-white">
       <div className="w-full px-4 md:px-12 py-4">
         <TripManager
-          initialTrips={userTrips}
+          initialTrips={tripsFromDb}
           session={session}
           allAvailablePeople={allAvailableParticipants}
         />

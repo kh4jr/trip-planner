@@ -30,8 +30,6 @@ export async function createTrip(
         description: data.description || null,
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
-
-        // 🔴 TO BYŁ BRAK
         ownerId: ownerId,
 
         participants: {

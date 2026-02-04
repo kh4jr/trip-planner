@@ -3,7 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Wymuszamy jasne kolory nawet jeśli system/provider myśli, że jest ciemno */
 html.dark, :root {
   --bg-body: #F0F7FF; 
   --bg-card: #ffffff;
@@ -20,18 +19,18 @@ html.dark, :root {
   }
 
   body {
-    @apply antialiased min-h-screen w-full; /* Dodano w-full */
+    @apply antialiased min-h-screen w-full; 
     background-color: var(--bg-body);
     margin: 0;
     padding: 0;
-    display: block; /* Upewniamy się, że body nie centruje dzieci */
+    display: block; 
   }
 }
 
 html, body {
-  height: auto !important; /* Pozwala stronie rosnąć w dół */
-  overflow-x: hidden;      /* Blokuje tylko przewijanie na boki */
-  overflow-y: visible !important; /* WYMUSZA widoczność przewijania pionowego */
+  height: auto !important; 
+  overflow-x: hidden;    
+  overflow-y: visible !important; 
 }
 
 main, #__next {
@@ -44,13 +43,10 @@ main, #__next {
     @apply p-6 rounded-[2rem] shadow-xl shadow-blue-100/50 border border-blue-50 transition-all duration-300;
 }
 
-/* 5. USUNIĘCIE STARYCH NADPISAŃ */
-/* Zamiast !important, pozwalamy Tailwindowi działać, chyba że tryb ciemny jest aktywny */
 html.dark .bg-white {
   background-color: var(--bg-card) !important;
 }
 
-/* Efekt delikatnego uniesienia dla przycisków i kart */
 .hover-lift {
   @apply transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl;
 }

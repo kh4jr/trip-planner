@@ -17,9 +17,8 @@ export default function TripForm({ onSave, onCancel }: TripFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Tworzymy obiekt zgodny z nową strukturą (ID tymczasowe jako number)
     const newTrip: Trip & { participants: Participant[] } = {
-      id: Date.now(), // Tymczasowe ID
+      id: Date.now(), 
       name,
       destination,
       startDate,

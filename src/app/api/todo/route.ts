@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
     const todo = await db.tripItem.create({
       data: {
-        name: content,          // ← content mapujemy na name
+        name: content,      
         tripId: Number(tripId),
         isCompleted: false,
       },
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         tripId: Number(tripId),
       },
       orderBy: {
-        id: "asc", // albo name: "asc"
+        id: "asc",
       },
     });
 

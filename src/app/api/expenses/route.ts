@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         description: body.description,
         amount: parseFloat(body.amount),
         paidBy: body.paidBy,
-        category: body.category || "other", // ← DODANE
+        category: body.category || "other",
         tripId: parseInt(body.tripId),
       },
     });

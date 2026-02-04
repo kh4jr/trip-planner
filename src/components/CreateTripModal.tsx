@@ -62,7 +62,7 @@ export default function CreateTripModal({
       description: formData.get("description"),
       startDate: new Date(startDateRaw).toISOString(),
       endDate: new Date(endDateRaw).toISOString(),
-      participantIds: selectedIds, // participant.id
+      participantIds: selectedIds, 
     };
 
     try {

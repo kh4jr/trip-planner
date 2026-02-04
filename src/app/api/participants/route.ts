@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const tripId = searchParams.get("tripId");
+  const userId = searchParams.get("userId");
 
-  if (!tripId) return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+  if (!userId) return NextResponse.json({ error: "Brak userId" }, { status: 400 });
 
   const participants = await db.participant.findMany({
   where: {
-    tripId: Number(tripId),
+    userId: Number(userId),
   },
 });
 

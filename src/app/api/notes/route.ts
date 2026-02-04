@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db"; // upewnij się, że masz poprawny import do instancji prisma
+import { db } from "@/lib/db";
 
 export async function GET(request: Request) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
         tripId: parseInt(tripId),
       },
       orderBy: {
-        createdAt: "asc", // Notatki będą w kolejności dodawania
+        createdAt: "asc",
       },
     });
 

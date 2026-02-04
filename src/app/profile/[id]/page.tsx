@@ -22,12 +22,10 @@ export default async function FriendProfilePage({ params }: PageProps) {
   const viewerId = Number(session.user.id);
   const profileUserId = Number(params.id);
 
-  // jeśli to mój własny profil → redirect
   if (viewerId === profileUserId) {
     redirect("/profile");
   }
 
-  // pobierz użytkownika
   const user = await db.user.findUnique({
     where: { id: profileUserId },
   });
@@ -36,7 +34,6 @@ export default async function FriendProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  // sprawdź czy to mój znajomy
   const friendship = await db.friend.findFirst({
     where: {
       status: "ACCEPTED",
@@ -48,10 +45,9 @@ export default async function FriendProfilePage({ params }: PageProps) {
   });
 
   if (!friendship) {
-    notFound(); // brak dostępu
+    notFound(); 
   }
 
-  // pobierz wyjazdy znajomego
   const userTrips = await db.trip.findMany({
     where: {
       ownerId: profileUserId,

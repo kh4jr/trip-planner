@@ -18,14 +18,13 @@ export async function GET(req: Request) {
     return NextResponse.json([], { status: 200 });
   }
 
-  // 1️⃣ znajdź userów pasujących do query
   const users = await db.user.findMany({
     where: {
       OR: [
         { name: { contains: query, mode: "insensitive" } },
         { email: { contains: query, mode: "insensitive" } },
       ],
-      NOT: { id: meId }, // ❗ nie pokazuj siebie
+      NOT: { id: meId },
     },
     select: {
       id: true,
@@ -41,7 +40,6 @@ export async function GET(req: Request) {
 
   const userIds = users.map((u) => u.id);
 
-  // 2️⃣ pobierz WSZYSTKIE relacje Friend między mną a wynikami
   const friendships = await db.friend.findMany({
     where: {
       OR: [
@@ -57,7 +55,6 @@ export async function GET(req: Request) {
     },
   });
 
-  // 3️⃣ helper do wyliczenia statusu
   function getStatus(otherUserId: number) {
     const relation = friendships.find(
       (f) =>
@@ -71,7 +68,6 @@ export async function GET(req: Request) {
       return "ACCEPTED";
     }
 
-    // status = PENDING
     if (relation.userId === meId) {
       return "PENDING_SENT";
     }
@@ -79,7 +75,6 @@ export async function GET(req: Request) {
     return "PENDING_RECEIVED";
   }
 
-  // 4️⃣ response z runtime field
   const result = users.map((u) => ({
     ...u,
     friendshipStatus: getStatus(u.id),

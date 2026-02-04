@@ -198,7 +198,7 @@ export default function FriendsSelection({
         />
       )}
 
-      {/* 🔎 INPUT */}
+      { }
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -213,7 +213,7 @@ export default function FriendsSelection({
         <p className="text-xs font-bold text-blue-400 mb-3">{info}</p>
       )}
 
-      {/* 🔍 WYNIKI WYSZUKIWANIA */}
+      {/* WYSZUKIWANIE */}
 {query && (
   <div className="space-y-2 mb-4">
     {loading && (
@@ -248,7 +248,7 @@ export default function FriendsSelection({
             <p className="text-xs text-blue-400">{u.email}</p>
           </div>
 
-          {/* 👉 STATUS ZNAJOMOŚCI */}
+          {/* STATUSY */}
           {status === "NONE" && (
             <button
               disabled={actionLoading === u.id}
@@ -285,7 +285,7 @@ export default function FriendsSelection({
   </div>
 )}
 
-      {/* 👥 LISTA ZNAJOMYCH */}
+      {/* LISTA */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (

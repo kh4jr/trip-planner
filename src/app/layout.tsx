@@ -11,7 +11,7 @@ export default function RootLayout({
   return (
     <html lang="pl" suppressHydrationWarning>
       <body className="min-h-screen w-full">
-        {/* OPATULAMY CAŁĄ APLIKACJĘ W PROVIDERS */}
+        {/* APLIKACJa -> PROVIDERS */}
         <Providers> 
           {children}
         </Providers>

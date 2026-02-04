@@ -5,9 +5,8 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import WorldMap from "@/components/WorldMap";
-import { Expense } from '@prisma/client';
+//import { Expense } from '@prisma/client';
 
-// Interfejsy
 interface StatCardProps {
   title: string;
   value: string | number;
@@ -44,13 +43,10 @@ export default async function ProfilePage() {
     }
   });
 
-  // --- LOGIKA STATYSTYK BEZ 'ANY' ---
   const totalTrips = userTrips.length;
 
   const totalExpensesSum = userTrips.reduce((acc, trip) => {
-    // TypeScript wie, że e to Expense dzięki relacji w Prisma
     const tripSum = trip.expenses?.reduce((s, e) => {
-      // Bezpieczna konwersja Decimal/Float na liczbę
       const val = e.amount ? Number(e.amount.toString()) : 0;
       return s + (isNaN(val) ? 0 : val);
     }, 0) || 0;

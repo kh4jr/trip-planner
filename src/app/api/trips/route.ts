@@ -14,9 +14,6 @@ interface CreateTripBody {
   participantIds?: number[];
 }
 
-/**
- * ✅ GET — ZAWSZE 100% WYJAZDÓW
- */
 export async function GET() {
   const trips = await db.trip.findMany({
     include: {
@@ -35,11 +32,6 @@ export async function GET() {
   return NextResponse.json(trips);
 }
 
-/**
- * ✅ POST — POPRAWNE TWORZENIE WYJAZDU
- * - owner ZAWSZE participant
- * - zero łamania relacji Prisma
- */
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -61,7 +53,6 @@ export async function POST(req: Request) {
       participantIds = [],
     } = body;
 
-    // 🔹 owner = participant (MUSI ISTNIEĆ)
     const ownerParticipant = await db.participant.findUnique({
       where: { userId },
     });
@@ -73,7 +64,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔹 inni uczestnicy (TYLKO ISTNIEJĄCY)
     const otherParticipants = await db.participant.findMany({
       where: {
         userId: {
@@ -118,3 +108,41 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const tripId = Number(searchParams.get("tripId"));
+
+  if (!tripId) {
+    return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+  }
+
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+  });
+
+  if (!trip) {
+    return NextResponse.json({ error: "Wyjazd nie istnieje" }, { status: 404 });
+  }
+
+  if (trip.ownerId !== userId) {
+    return NextResponse.json(
+      { error: "Brak uprawnień" },
+      { status: 403 }
+    );
+  }
+
+  await db.trip.delete({
+    where: { id: tripId },
+  });
+
+  return NextResponse.json({ success: true });
+}
+

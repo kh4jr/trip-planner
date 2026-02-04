@@ -1,9 +1,10 @@
 export interface Participant {
-  id: number;      // Liczba, bo tak jest w Postgres
+  id: number;      
   name: string;
   email: string;
   role: string;
-  tripId: number;
+  //tripId: number;
+  trips: Trip[];
 }
 
 export interface Trip {
@@ -55,4 +56,3 @@ export interface Note {
 export type TripFormData = Omit<Trip, 'id' | 'participants'> & {
   participants: Omit<Participant, 'id' | 'tripId'>[];
 };
-

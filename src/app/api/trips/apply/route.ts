@@ -28,7 +28,6 @@ export async function POST(req: Request) {
             name: session?.user?.name || "Uczestnik",
         };
 
-        // Rzutowanie na unknown ucisza błędy typowania bez użycia any
         const participant = await (db.participant as unknown as { 
             create: (args: { data: ApplyData }) => Promise<unknown> 
         }).create({
