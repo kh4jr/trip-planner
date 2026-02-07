@@ -5,7 +5,8 @@ import { addExpense, addNote } from "@/lib/actions";
 import { Activity, Expense, Note, TripItem } from "@prisma/client";
 import { ChevronDown } from "lucide-react";
 import { FullTrip } from "@/types/fullTrip";
-
+import { useEffect } from "react";
+import { errorAlert, successAlert } from "@/lib/alert";
 
 interface ExpenseStat {
   name: string;
@@ -23,7 +24,6 @@ interface TripTabsProps {
   todos: TripItem[];
 
   isReadOnly: boolean;
-
 
   onDeleteTrip: (id: number) => void;
 
@@ -74,6 +74,21 @@ export default function TripTabs(props: TripTabsProps) {
   const [todoCategory, setTodoCategory] = useState("Ubrania");
   const [expenseCategory, setExpenseCategory] = useState('food');
   const [isListOpen, setIsListOpen] = useState(false)
+  const [alert, setAlert] = useState<{
+  type: "error" | "success";
+  message: string;
+} | null>(null);
+
+  useEffect(() => {
+    if (!alert) return;
+
+    const timer = setTimeout(() => {
+      setAlert(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [alert]);
+
 
   const participants = (props.trip.participants || []).map(p => ({
   id: p.id,
@@ -107,7 +122,10 @@ export default function TripTabs(props: TripTabsProps) {
 
   const handleSaveActivity = async () => {
     if (!newActivityName || !newActivityTime) return;
+
     setLoading(true);
+    setAlert(null);
+
     try {
       const res = await fetch("/api/activities", {
         method: "POST",
@@ -115,74 +133,190 @@ export default function TripTabs(props: TripTabsProps) {
         body: JSON.stringify({
           name: newActivityName,
           time: newActivityTime,
-          tripId: props.trip.id
+          tripId: props.trip.id,
         }),
       });
-      if (res.ok) {
-        const saved = await res.json();
-        props.onAddActivity(saved); 
-        setIsAddingActivity(false);
-        setNewActivityName("");
-        setNewActivityTime("");
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setAlert(errorAlert("Musisz być zalogowany, aby dodać aktywność."));
+          return;
+        }
+
+        if (res.status === 403) {
+          setAlert(errorAlert("Nie jesteś uczestnikiem tej podróży."));
+          return;
+        }
+
+        setAlert(errorAlert("Wystąpił błąd podczas zapisu aktywności."));
+          return;
       }
+
+      const saved = await res.json();
+      props.onAddActivity(saved);
+
+      setIsAddingActivity(false);
+      setNewActivityName("");
+      setNewActivityTime("");
+      } catch (error) {
+        console.error(error);
+        setAlert({
+          type: "error",
+          message: "Wystąpił błąd podczas zapisu aktywności.",
+        });
+      } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleSaveExpense = async () => {
+    if (!expenseDesc || !expenseAmount || !paidBy) return;
+
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      const saved = await addExpense(props.trip.id, {
+        description: expenseDesc,
+        amount: parseFloat(expenseAmount),
+        paidBy: paidBy,
+        category: expenseCategory,
+      });
+
+      props.onAddExpense(saved);
+
+      setAlert(successAlert("Wydatek został dodany."));
+
+      setExpenseDesc("");
+      setExpenseAmount("");
+      setPaidBy("");
+      setIsAddingExpense(false);
     } catch (error) {
       console.error(error);
+      setAlert(errorAlert("Nie udało się dodać wydatku."));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveExpense = async () => {
-  if (!expenseDesc || !expenseAmount || !paidBy) return;
-
-  setLoading(true);
-  try {
-    const saved = await addExpense(props.trip.id, {
-      description: expenseDesc,
-      amount: parseFloat(expenseAmount),
-      paidBy: paidBy,
-      category: expenseCategory,
-    });
-
-    props.onAddExpense(saved);
-    setExpenseDesc("");
-    setExpenseAmount("");
-    setIsAddingExpense(false);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    setLoading(false);
-  }
-};
-
   const handleSaveNote = async () => {
-  if (!newNoteText.trim()) return;
+    if (!newNoteText.trim()) return;
 
-  setLoading(true);
-  try {
-    const saved = await addNote(
-    props.trip.id,
-    newNoteText
-  );
+    setLoading(true);
+    setAlert(null);
 
-    props.onAddNote(saved);
-    setNewNoteText("");
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      const saved = await addNote(
+        props.trip.id,
+        newNoteText
+      );
+
+      props.onAddNote(saved);
+      setNewNoteText("");
+
+      setAlert(successAlert("Notatka została dodana."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się dodać notatki."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const handleSaveTodo = async () => {
-  if (!newTodoText.trim()) return;
+    if (!newTodoText.trim()) return;
 
-  setLoading(true);
-  try {
-    await props.onAddTodo(newTodoText, todoCategory);
-    setNewTodoText("");
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      await props.onAddTodo(newTodoText, todoCategory);
+
+      setAlert(successAlert("Zadanie zostało dodane."));
+      setNewTodoText("");
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się dodać zadania."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteActivity = async (id: number) => {
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      await props.onDeleteActivity(id);
+      setAlert(successAlert("Aktywność została usunięta."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się usunąć aktywności."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: number) => {
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      await props.onRemoveExpense(id);
+      setAlert(successAlert("Wydatek został usunięty."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się usunąć wydatku."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteNote = async (id: number) => {
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      await props.onDeleteNote(id);
+      setAlert(successAlert("Notatka została usunięta."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się usunąć notatki."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTodo = async (id: number) => {
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      await props.onDeleteTodo(id);
+      setAlert(successAlert("Zadanie zostało usunięte."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się usunąć zadania."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTrip = async () => {
+    setLoading(true);
+    setAlert(null);
+
+    try {
+      props.onDeleteTrip(props.trip.id);
+      setAlert(successAlert("Wyjazd został usunięty."));
+    } catch (error) {
+      console.error(error);
+      setAlert(errorAlert("Nie udało się usunąć wyjazdu."));
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const settlement: { from: string; to: string; amount: number }[] = [];
@@ -268,7 +402,7 @@ export default function TripTabs(props: TripTabsProps) {
     </div>
   </div>  
         <button
-          onClick={() => props.onDeleteTrip(props.trip.id)}
+          onClick={handleDeleteTrip}
           className="
             px-4 py-2
             rounded-xl
@@ -302,6 +436,18 @@ export default function TripTabs(props: TripTabsProps) {
         ))}
       </div>
 
+      {alert && (
+          <div
+            className={`p-4 rounded-xl text-sm font-bold ${
+              alert.type === "error"
+                ? "bg-red-50 text-red-600 border border-red-100"
+                : "bg-green-50 text-green-600 border border-green-100"
+            }`}
+          >
+            {alert.message}
+          </div>
+        )}
+
       { }
       <div className="mt-6 w-full lg:min-h-[500px]">
         
@@ -325,7 +471,7 @@ export default function TripTabs(props: TripTabsProps) {
                 />
                 <input 
                   type="datetime-local" 
-                  className="w-full p-4 bg-white border border-blue-50 rounded-xl outline-none font-bold !text-slate-900" 
+                  className="w-full-1/2 p-4 bg-white border border-blue-300 rounded-xl outline-none font-bold !text-slate-900"
                   value={newActivityTime} 
                   onChange={(e) => setNewActivityTime(e.target.value)} 
                 />
@@ -347,7 +493,7 @@ export default function TripTabs(props: TripTabsProps) {
                     {new Date(act.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                   <h4 className="flex-1 font-black !text-blue-900 text-lg text-left">{act.name}</h4>
-                  <button onClick={() => props.onDeleteActivity(act.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-125 transition-all">🗑️</button>
+                  <button onClick={() => handleDeleteActivity(act.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-125 transition-all">🗑️</button>
                 </div>
               ))}
             </div>
@@ -446,7 +592,7 @@ export default function TripTabs(props: TripTabsProps) {
               {currentExpenses.map(exp => (
                 <div key={exp.id} className="group flex justify-between items-center bg-white p-6 rounded-2xl border border-blue-50 shadow-sm hover:border-blue-200 transition-all">
                   <div className="flex items-center gap-4">
-                    <button onClick={async () => { if(confirm('Usunąć?')) await props.onRemoveExpense(exp.id); }} className="opacity-0 group-hover:opacity-100 p-2 text-red-400 transition-all">🗑️</button>
+                    <button onClick={() => handleDeleteExpense(exp.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-400 transition-all">🗑️</button>
                     <div className="text-left">
                       <p className="font-black !text-blue-900 text-lg">{exp.description}</p>
                       <p className="text-[10px] font-bold !text-blue-400 uppercase">
@@ -485,7 +631,7 @@ export default function TripTabs(props: TripTabsProps) {
                       <span 
                           className="truncate">{new Date(note.createdAt).toLocaleDateString()} • autor: organizator
                       </span>
-                      <button onClick={() => props.onDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-110">Usuń</button>
+                      <button onClick={() => handleDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-110">Usuń</button>
                     </div>
                   </div>
                 </div>
@@ -559,7 +705,7 @@ export default function TripTabs(props: TripTabsProps) {
                             {todo.name}
                           </span>
                           <button
-                            onClick={() => props.onDeleteTodo(todo.id)}
+                            onClick={() => handleDeleteTodo(todo.id)}
                             className="opacity-0 group-hover:opacity-100 text-red-400 hover:rotate-12 transition-all"
                           >
                             🗑️

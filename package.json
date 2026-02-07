@@ -2,6 +2,7 @@
   "name": "trip-planner",
   "version": "0.1.0",
   "private": true,
+  
   "scripts": {
     "dev": "next dev",
     "build": "next build --turbopack",
@@ -33,6 +34,8 @@
     "eslint-config-next": "15.5.4",
     "prisma": "^6.19.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "ts-node": "^10.9.2"
   }
 }
+
