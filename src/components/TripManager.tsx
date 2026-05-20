@@ -117,8 +117,18 @@ export default function TripManager({
   const handleAddActivity = (a: Activity) =>
     setActivities((prev) => [...prev, a]);
 
-  const handleDeleteActivity = async (id: number) =>
+  const handleDeleteActivity = async (id: number) => {
+    const res = await fetch(`/api/activities?id=${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      throw new Error("Nie udało się usunąć aktywności");
+    }
+
     setActivities((prev) => prev.filter((a) => a.id !== id));
+  };
+
 
   const handleAddExpense = (e: Expense) =>
     setExpenses((prev) => [...prev, e]);
@@ -150,9 +160,17 @@ export default function TripManager({
     setSelectedIds([]);
   };
 
-  const handleRemoveExpense = (id: number) => {
-  setExpenses(prev => prev.filter(e => e.id !== id));
-};
+  const handleRemoveExpense = async (id: number) => {
+    const res = await fetch(`/api/expenses?id=${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      throw new Error("Nie udało się usunąć wydatku");
+    }
+
+    setExpenses(prev => prev.filter(e => e.id !== id));
+  };
 
   const handleUpdateNote = (id: number, completed: boolean) => {
     setNotes(prev =>
@@ -162,7 +180,15 @@ export default function TripManager({
     );
   };
 
-  const handleRemoveNote = (id: number) => {
+  const handleRemoveNote = async (id: number) => {
+    const res = await fetch(`/api/notes?id=${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      throw new Error("Nie udało się usunąć notatki");
+    }
+
     setNotes(prev => prev.filter(n => n.id !== id));
   };
 
@@ -174,9 +200,18 @@ export default function TripManager({
     );
   };
 
-  const handleRemoveTodo = (id: number) => {
+  const handleRemoveTodo = async (id: number) => {
+    const res = await fetch(`/api/todo?id=${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      throw new Error("Nie udało się usunąć zadania");
+    }
+
     setTodos(prev => prev.filter(t => t.id !== id));
   };
+
   const requestDeleteTrip = (id: number) => {
   setTripToDelete(id);
   setConfirmOpen(true);

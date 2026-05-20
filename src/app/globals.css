@@ -3,6 +3,14 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body {
+  width: 100%;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0;
+}
+
 html.dark, :root {
   --bg-body: #F0F7FF; 
   --bg-card: #ffffff;

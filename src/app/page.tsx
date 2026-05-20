@@ -65,7 +65,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen flex flex-col bg-white">
-      <div className="w-full px-4 md:px-12 py-4">
+      <div className="w-full !px-6 lg:!px-8 npxpy-4">
         <TripManager
           initialTrips={tripsFromDb}
           session={session}

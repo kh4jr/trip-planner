@@ -57,13 +57,15 @@ export default function CreateTripModal({
 
     const tripData = {
       name: formData.get("name"),
-      location: formData.get("location"),
-      destination: formData.get("destination"),
+      location: formData.get("destination"),
+      destination: formData.get("location"), 
+
       description: formData.get("description"),
       startDate: new Date(startDateRaw).toISOString(),
       endDate: new Date(endDateRaw).toISOString(),
-      participantIds: selectedIds, 
+      participantIds: selectedIds,
     };
+
 
     try {
       const res = await fetch("/api/trips", {
@@ -108,13 +110,13 @@ export default function CreateTripModal({
           />
           <input
             name="location"
-            placeholder="Miejsce startu"
+            placeholder="Miejsce docelowe"
             required
             className="w-full p-4 bg-blue-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-blue-900 placeholder:text-blue-300"
           />
           <input
             name="destination"
-            placeholder="Cel podróży"
+            placeholder="Miejsce startu"
             required
             className="w-full p-4 bg-blue-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-blue-900 placeholder:text-blue-300"
           />

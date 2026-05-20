@@ -37,6 +37,7 @@ export async function POST(req: Request) {
         name: body.name,
         time: new Date(body.time),
         tripId,
+        createdByName: session.user.name ?? session.user.email ?? "Użytkownik",
       },
     });
 
@@ -54,3 +55,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    await db.activity.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE ACTIVITY:", error);
+    return NextResponse.json(
+      { error: "Nie udało się usunąć aktywności" },
+      { status: 500 }
+    );
+  }
+}
+

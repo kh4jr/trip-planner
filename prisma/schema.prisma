@@ -97,6 +97,8 @@ model Activity {
 
   tripId Int
   trip   Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  createdByName  String?
 }
 
 model TripItem {

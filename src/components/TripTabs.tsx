@@ -79,6 +79,13 @@ export default function TripTabs(props: TripTabsProps) {
   message: string;
 } | null>(null);
 
+  const formatTime = (d: Date | string) =>
+    new Date(d).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+
+  const formatDate = (d: Date | string) =>
+    new Date(d).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
+
+
   useEffect(() => {
     if (!alert) return;
 
@@ -346,6 +353,18 @@ export default function TripTabs(props: TripTabsProps) {
     <h2 className="text-4xl md:text-5xl font-black !text-blue-900 tracking-tighter leading-tight">
       {props.trip.name}
     </h2>
+    <div className="flex flex-wrap items-center gap-3">
+  <div className="flex flex-wrap items-center gap-3">
+  <span className="text-sm md:text-base font-black !text-blue-700 bg-blue-100 px-5 py-2 rounded-2xl">
+    🧭 {props.trip.location} → {props.trip.destination}
+  </span>
+
+  <span className="text-sm md:text-base font-black !text-blue-500 bg-blue-50 px-5 py-2 rounded-2xl">
+    📅 {formatDate(props.trip.startDate)} – {formatDate(props.trip.endDate)}
+  </span>
+</div>
+
+</div>
     <div className="flex flex-wrap items-center gap-4">
       <p className="text-lg !text-blue-600 font-black bg-blue-50 px-5 py-2 rounded-2xl">
         📍 {props.trip.location || props.trip.destination || "Brak lokalizacji"}
@@ -451,7 +470,6 @@ export default function TripTabs(props: TripTabsProps) {
       { }
       <div className="mt-6 w-full lg:min-h-[500px]">
         
-        { }
         {activeTab === 'plan' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex justify-between items-center">
@@ -463,37 +481,75 @@ export default function TripTabs(props: TripTabsProps) {
 
             {isAddingActivity ? (
               <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-100 space-y-4">
-                <input 
-                  placeholder="Co planujesz?" 
-                  className="w-full p-4 bg-white border border-blue-50 rounded-xl outline-none font-bold !text-slate-900 placeholder:!text-slate-400" 
-                  value={newActivityName} 
-                  onChange={(e) => setNewActivityName(e.target.value)} 
+                <input
+                  placeholder="Co planujesz?"
+                  className="w-full p-4 bg-white border border-blue-50 rounded-xl outline-none font-bold !text-slate-900 placeholder:!text-slate-400"
+                  value={newActivityName}
+                  onChange={(e) => setNewActivityName(e.target.value)}
                 />
-                <input 
-                  type="datetime-local" 
+                <input
+                  type="datetime-local"
                   className="w-full-1/2 p-4 bg-white border border-blue-300 rounded-xl outline-none font-bold !text-slate-900"
-                  value={newActivityTime} 
-                  onChange={(e) => setNewActivityTime(e.target.value)} 
+                  value={newActivityTime}
+                  onChange={(e) => setNewActivityTime(e.target.value)}
                 />
                 <div className="flex gap-2">
-                  <button onClick={handleSaveActivity} disabled={loading} className="flex-1 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg">Zapisz</button>
-                  <button onClick={() => setIsAddingActivity(false)} className="px-6 bg-gray-100 !text-slate-600 rounded-xl font-bold">Anuluj</button>
+                  <button
+                    onClick={handleSaveActivity}
+                    disabled={loading}
+                    className="flex-1 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg"
+                  >
+                    Zapisz
+                  </button>
+                  <button
+                    onClick={() => setIsAddingActivity(false)}
+                    className="px-6 bg-gray-100 !text-slate-600 rounded-xl font-bold"
+                  >
+                    Anuluj
+                  </button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setIsAddingActivity(true)} className="w-full py-10 border-4 border-dashed border-blue-50 rounded-[2.5rem] !text-slate-300 hover:!text-blue-500 font-black text-xl transition-all">
+              <button
+                onClick={() => setIsAddingActivity(true)}
+                className="w-full py-10 border-4 border-dashed border-blue-50 rounded-[2.5rem] !text-slate-300 hover:!text-blue-500 font-black text-xl transition-all"
+              >
                 + Zaplanuj nową przygodę
               </button>
             )}
 
             <div className="grid gap-4">
               {props.activities?.map((act) => (
-                <div key={act.id} className="flex items-center gap-6 bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm group">
-                  <div className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-xs shrink-0">
-                    {new Date(act.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div
+                  key={act.id}
+                  className="flex items-center gap-6 bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm group"
+                >
+                  <div className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-xs shrink-0 whitespace-nowrap">
+                    {new Date(act.time).toLocaleTimeString("pl-PL", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    •{" "}
+                    {new Date(act.time).toLocaleDateString("pl-PL", {
+                      day: "2-digit",
+                      month: "2-digit",
+                    })}
                   </div>
-                  <h4 className="flex-1 font-black !text-blue-900 text-lg text-left">{act.name}</h4>
-                  <button onClick={() => handleDeleteActivity(act.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-125 transition-all">🗑️</button>
+
+                  <p className="flex-1 font-black !text-blue-900 text-lg truncate text-left">
+                    {act.name}
+                  </p>
+
+                  <span className="text-[11px] font-black !text-blue-400 whitespace-nowrap">
+                    {act.createdByName ?? "—"}
+                  </span>
+
+                  <button
+                    onClick={() => handleDeleteActivity(act.id)}
+                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-125 transition-all"
+                  >
+                    🗑️
+                  </button>
                 </div>
               ))}
             </div>
