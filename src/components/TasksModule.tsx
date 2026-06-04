@@ -5,12 +5,11 @@ import { TripItem, Participant } from '@/lib/data';
 interface TasksModuleProps {
     tripId: number;
     tripItems: TripItem[];
-    participantsMap: Map<number, Participant>; // Zmiana string na number
+    participantsMap: Map<number, Participant>; 
     onToggleItem: (itemId: number) => void;
 }
 
 export default function TasksModule({ tripItems, participantsMap, onToggleItem }: TasksModuleProps) {
-    // Dopasowanie do pól z bazy: 'category' zamiast 'type' i 'name' zamiast 'description'
     const packingList = tripItems.filter(item => item.category === 'packing');
     const todoList = tripItems.filter(item => item.category === 'todo');
 
@@ -32,7 +31,7 @@ export default function TasksModule({ tripItems, participantsMap, onToggleItem }
                             </span>
                         </div>
                         <div className="text-sm text-blue-500">
-                           {/* Zakładając, że w bazie mamy relację lub pole do przypisania - na razie uproszczone */}
+                           { }
                            Odp.: Wszyscy
                         </div>
                     </li>

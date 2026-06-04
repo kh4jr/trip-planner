@@ -41,3 +41,14 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# database configurations and scripts
+/prisma
+/prisma.config*
+/user.json
+
+# AI agent documentation and notes
+Agent.md
+Context.md
+Memory.md
+

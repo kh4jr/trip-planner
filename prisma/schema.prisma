@@ -1,33 +1,22 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-model Participant {
-  id     Int    @id @default(autoincrement())
-  name   String
-  email  String @default("")
-  role   String @default("member")
-  trip   Trip   @relation(fields: [tripId], references: [id])
-  tripId Int
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  email    String  @unique
-  password String
-  name     String?
-  trips    Trip[]
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  password     String
+  name         String?
+  trips        Trip[]        @relation("TripOwner")
+  participants Participant[]
+  friendships  Friend[]      @relation("UserFriendships")
+  friendOf     Friend[]      @relation("FriendOfUsers")
 }
 
 model Trip {
@@ -36,22 +25,51 @@ model Trip {
   destination  String
   startDate    DateTime
   endDate      DateTime
-  userId       Int?
-  user         User?         @relation(fields: [userId], references: [id])
+  ownerId      Int?
+  description  String?       @default("")
+  location     String?       @default("Brak lokalizacji")
+  createdAt    DateTime      @default(now())
+
+  owner        User?         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   participants Participant[]
   activities   Activity[]
   expenses     Expense[]
   notes        Note[]
-  items        TripItem[]
   images       TripImage[]
+  items        TripItem[]
+}
+
+model Participant {
+  id     Int    @id @default(autoincrement())
+  name   String @default("Uczestnik")
+  email  String @default("")
+  role   String @default("member")
+  
+  userId Int?   @unique
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  trips  Trip[]
+}
+
+model Friend {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  friendId Int
+  status   String @default("PENDING")
+
+  user   User @relation("UserFriendships", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOfUsers", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
 }
 
 model Activity {
-  id     Int      @id @default(autoincrement())
-  name   String
-  time   DateTime
-  tripId Int
-  trip   Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id            Int      @id @default(autoincrement())
+  name          String
+  time          DateTime
+  tripId        Int
+  createdByName String?  @default("Użytkownik")
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model Expense {
@@ -59,6 +77,7 @@ model Expense {
   description String
   amount      Float
   paidBy      String
+  category    String @default("food")
   tripId      Int
   trip        Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
@@ -66,39 +85,39 @@ model Expense {
 model Note {
   id          Int      @id @default(autoincrement())
   content     String
-  author      String   // Kto dodał notatkę
+  author      String   @default("organizator")
   isCompleted Boolean  @default(false)
-  completedBy String?  // Kto skreślił notatkę
+  completedBy String?
   createdAt   DateTime @default(now())
   tripId      Int
   trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model TripItem {
-  id          Int      @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   name        String
-  category    String   // np. "Ubrania", "Dokumenty"
-  isPacked    Boolean  @default(false)
-  packedBy    String?  // Opcjonalnie: kto spakował
+  category    String  @default("Inne")
+  isCompleted Boolean @default(false)
+  packedBy    String?
   tripId      Int
-  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip        Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model Todo {
   id          Int      @id @default(autoincrement())
   tripId      Int
   content     String
-  category    String   @default("Inne") // np. Ubrania, Dokumenty, Elektronika
+  category    String   @default("Inne")
   isCompleted Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 
 model TripImage {
-  id          Int      @id @default(autoincrement())
-  url         String   // Link do zdjęcia
-  caption     String?  // Podpis
-  uploadedBy  String
-  createdAt   DateTime @default(now())
-  tripId      Int
-  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  url        String
+  caption    String?
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  tripId     Int
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }

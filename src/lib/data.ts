@@ -1,9 +1,10 @@
 export interface Participant {
-  id: number;      // Liczba, bo tak jest w Postgres
+  id: number;      
   name: string;
   email: string;
   role: string;
-  tripId: number;
+  //tripId: number;
+  trips: Trip[];
 }
 
 export interface Trip {

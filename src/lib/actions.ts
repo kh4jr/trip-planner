@@ -1,82 +1,152 @@
-// src/lib/actions.ts
 'use server'
 
-import { prisma } from './db'
+import { db } from './db'
 import { revalidatePath } from 'next/cache'
-import { TripFormData } from './data'
-import { Expense } from '@prisma/client'
 
-export async function createTrip(data: TripFormData) {
+export interface TripFormData {
+  name: string;
+  destination: string;
+  location?: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  participants: {
+    name: string;
+    email?: string;
+    role?: string;
+  }[];
+}
+
+export async function createTrip(
+  data: TripFormData,
+  ownerId: number
+) {
   try {
-    const trip = await prisma.trip.create({
+    const trip = await db.trip.create({
       data: {
         name: data.name,
         destination: data.destination,
+        location: data.location || null,
+        description: data.description || null,
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
+        ownerId: ownerId,
+
         participants: {
           create: data.participants.map((p) => ({
             name: p.name,
-            email: p.email || '',
-            role: p.role || 'member'
-          }))
-        }
-      }
-    })
-    revalidatePath('/')
-    return trip;
-  } catch (error) {
-    console.error("Szczegółowy błąd bazy:", error);
-    throw new Error("Nie udało się zapisać w PostgreSQL");
-  }
-}
-
-export async function addExpense(
-  tripId: number, 
-  data: { description: string, amount: number, paidBy: string }
-): Promise<Expense> { // FIX: Gwarantujemy, że funkcja zwróci Expense, a nie 'void'
-  try {
-    const expense = await prisma.expense.create({
-      data: {
-        description: data.description,
-        amount: data.amount,
-        paidBy: data.paidBy,
-        tripId: tripId,
+            email: p.email || "",
+            role: p.role || "member",
+          })),
+        },
       },
     });
 
-    // Odświeżamy cache
-    revalidatePath('/'); 
-    revalidatePath(`/trips/${tripId}`); 
-    
-    return expense; // Zwracamy obiekt, który właśnie trafił do bazy
+    revalidatePath("/");
+    return trip;
   } catch (error) {
-    console.error("Błąd zapisu:", error);
-    // Ważne: rzucamy błąd, żeby TS wiedział, że Promise nie "zawiśnie" na undefined
-    throw new Error("Nie udało się zapisać wydatku"); 
+    console.error("Błąd bazy:", error);
+    throw new Error("Nie udało się utworzyć podróży");
   }
 }
 
-export async function addNote(tripId: number, content: string, author: string) {
-  const note = await prisma.note.create({
+
+export async function addExpense(
+  tripId: number,
+  data: {
+    description: string;
+    amount: number;
+    paidBy: string;
+    category: string;
+  }
+) {
+  const expense = await db.expense.create({
+    data: {
+      description: data.description,
+      amount: data.amount,
+      paidBy: data.paidBy,
+      category: data.category,
+      tripId: tripId,
+    },
+  });
+
+  revalidatePath("/");
+  return expense;
+}
+
+export async function deleteExpense(expenseId: number) {
+  try {
+    await db.expense.delete({
+      where: { id: expenseId },
+    });
+    revalidatePath('/');
+  } catch (error) {
+    console.error("Błąd usuwania wydatku:", error);
+    throw new Error("Nie udało się usunąć wydatku");
+  }
+}
+
+export async function addNote(
+  tripId: number,
+  content: string
+) {
+  const note = await db.note.create({
     data: {
       content,
-      author,
       tripId,
     },
   });
-  revalidatePath('/');
+
+  revalidatePath("/");
   return note;
 }
 
-export async function toggleNote(noteId: number, isCompleted: boolean, userName: string) {
-  const note = await prisma.note.update({
+
+export async function toggleNote(noteId: number, isCompleted: boolean) {
+  await db.note.update({
     where: { id: noteId },
-    data: {
-      isCompleted,
-      completedBy: isCompleted ? userName : null,
-    },
+    data: { isCompleted },
   });
   revalidatePath('/');
-  return note;
 }
+
+export async function deleteNote(noteId: number) {
+  await db.note.delete({ where: { id: noteId } });
+  revalidatePath('/');
+}
+
+export async function addTodoAction(
+  tripId: number,
+  name: string
+) {
+  try {
+    const todo = await db.tripItem.create({
+      data: {
+        name,
+        tripId,
+        isCompleted: false,
+      },
+    });
+
+    revalidatePath('/');
+    return todo;
+  } catch (error) {
+    console.error("Błąd dodawania zadania:", error);
+    throw new Error("Nie udało się zapisać zadania");
+  }
+}
+
+
+export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
+  await db.tripItem.update({
+    where: { id: todoId },
+    data: { isCompleted }
+  });
+  revalidatePath('/');
+}
+
+export async function deleteTodoAction(todoId: number) {
+  await db.tripItem.delete({ where: { id: todoId } });
+  revalidatePath('/');
+}
+

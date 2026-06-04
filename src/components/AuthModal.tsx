@@ -24,7 +24,7 @@ export default function AuthModal({ isOpen, onClose }: Props) {
     setLoading(true);
 
     if (isLoginMode) {
-      // LOGOWANIE przez NextAuth
+      
       const result = await signIn('credentials', {
         redirect: false,
         email,
@@ -35,10 +35,9 @@ export default function AuthModal({ isOpen, onClose }: Props) {
         setError('Nieprawidłowy email lub hasło');
       } else {
         onClose();
-        window.location.reload(); // Odświeżamy, aby załadować sesję
+        window.location.reload();
       }
     } else {
-      // REJESTRACJA przez Twoje API
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
