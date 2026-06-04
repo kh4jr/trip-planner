@@ -26,7 +26,7 @@ export default function TripPlanModule({
                 className="p-3 border rounded-lg bg-gray-50 flex justify-between items-center transition duration-150 ease-in-out hover:shadow-sm"
             >
               <div className="flex-1">
-                {/* ZMIANA: activity.name zamiast activity.description */}
+                { }
                 <span className="font-medium text-gray-900">{activity.time}:</span> {activity.name}
               </div>
               
