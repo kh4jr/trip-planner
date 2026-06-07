@@ -1,0 +1,98 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/auth/register/route.ts` obsługuje proces rejestracji nowego użytkownika (metoda POST). W pierwszej kolejności odpytuje bazę danych o istnienie użytkownika z podanym adresem e-mail (SELECT na tabeli `User`). Jeśli adres jest wolny, haszuje hasło i wstawia nowy rekord użytkownika do bazy danych (INSERT do tabeli `User`).
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Sprawdzanie, czy użytkownik o wskazanym adresie e-mail już istnieje w systemie (`db.user.findUnique`).
+- **Insert (Create)**: Wstawianie nowego rekordu użytkownika z zaszyfrowanym hasłem (`db.user.create`).
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Weryfikacja unikalności e-maila (`db.user.findUnique`)**
+   - Prisma:
+     ```typescript
+     db.user.findUnique({
+       where: { email }
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "email", "password", "name"
+     FROM "User"
+     WHERE "email" = $1
+     LIMIT 1;
+     ```
+   - *Wyjaśnienie*: Sprawdza, czy w tabeli `"User"` istnieje wiersz z podanym adresem e-mail. Wykorzystuje unikalny indeks B-Tree na kolumnie `"email"`, co sprawia, że operacja wyszukiwania przebiega w czasie logarytmicznym O(log N).
+
+2. **Tworzenie nowego użytkownika (`db.user.create`)**
+   - Prisma:
+     ```typescript
+     db.user.create({
+       data: {
+         email,
+         name,
+         password: hashedPassword,
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     INSERT INTO "User" ("email", "name", "password")
+     VALUES ($1, $2, $3)
+     RETURNING "id", "email", "name";
+     ```
+   - *Wyjaśnienie*: Wstawia nowy rekord do tabeli `"User"`. PostgreSQL automatycznie generuje wartość dla pola klucza głównego `id` (typ `SERIAL` lub `autoincrement`). Klauzula `RETURNING` zwraca utworzone pola do klienta Prisma w celu przetworzenia odpowiedzi API.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+import bcrypt from "bcrypt";
+
+/**
+ * Metoda POST obsługująca proces rejestracji nowego użytkownika.
+ * Wykonuje walidację unikalności adresu e-mail oraz operację INSERT nowo utworzonego konta.
+ */
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { email, name, password } = body;
+
+    // Sprawdzenie, czy użytkownik o danym adresie e-mail już istnieje.
+    // Zapytanie SELECT korzysta z indeksu unikalnego B-Tree na kolumnie "User.email".
+    const existingUser = await db.user.findUnique({
+      where: { email }
+    });
+
+    // Jeżeli zapytanie SELECT zwróciło rekord, przerywamy rejestrację ze statusem 400.
+    if (existingUser) {
+      return NextResponse.json({ message: "Użytkownik o tym mailu już istnieje" }, { status: 400 });
+    }
+
+    // Haszowanie hasła użytkownika za pomocą biblioteki bcrypt (10 rund soli).
+    // Zapobiega to przechowywaniu haseł w bazie danych w postaci otwartego tekstu (zgodnie z zasadami bezpieczeństwa).
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Operacja INSERT mająca na celu dodanie nowego użytkownika do bazy danych.
+    // Automatycznie generuje klucz główny (id) dzięki sekwencji autoincrement.
+    const newUser = await db.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+      },
+    });
+
+    // Zwrócenie sukcesu oraz adresu e-mail zarejestrowanego użytkownika.
+    return NextResponse.json({ message: "Konto założone!", user: { email: newUser.email } }, { status: 201 });
+
+  } catch (error) {
+    // Ogólna obsługa błędu serwera.
+    return NextResponse.json({ message: "Błąd serwera" }, { status: 500 });
+  }
+}
+```

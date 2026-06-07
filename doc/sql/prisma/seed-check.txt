@@ -1,0 +1,131 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Skrypt `seed-check.js` pełni funkcję zasiewania (seeding) bazy danych domyślnymi kontami użytkowników z pliku konfiguracyjnego `user.json`. Zapewnia on idempotencję operacji zasiewania – przed dodaniem nowego rekordu sprawdza, czy użytkownik o danym adresie e-mail jest już zarejestrowany.
+
+Identyfikacja operacji CRUD:
+- **Select (Odczyt)**: Sprawdzenie istnienia użytkownika za pomocą unikalnego pola e-mail (`prisma.user.findUnique`). W bazie danych operacja ta korzysta z indeksu unikalnego na kolumnie `email`, co daje złożoność obliczeniową wyszukiwania $O(1)$ lub $O(\log N)$ (w strukturze B-drzewa).
+- **Insert (Zapis)**: Wstawienie nowego rekordu użytkownika do bazy danych za pomocą metody `prisma.user.create` w przypadku braku wcześniejszego wpisu.
+
+Interpretacja SQL:
+1. Metoda `prisma.user.findUnique({ where: { email: userData.email } })` jest tłumaczona przez Prisma ORM na następujące zapytanie SQL:
+   ```sql
+   SELECT "id", "email", "password", "name" 
+   FROM "User" 
+   WHERE "email" = $1 
+   LIMIT 1;
+   ```
+   Wyszukiwanie opiera się na unikalnym ograniczeniu indeksu `"User_email_key"`, dzięki czemu zapytanie jest niezwykle wydajne i optymalne pod kątem czasu wykonania.
+2. Metoda `prisma.user.create({ data: { ... } })` tłumaczy się na instrukcję wstawienia (INSERT):
+   ```sql
+   INSERT INTO "User" ("email", "password", "name") 
+   VALUES ($1, $2, $3) 
+   RETURNING "id", "email", "password", "name";
+   ```
+   Dzięki klauzuli `RETURNING` Prisma Client pobiera nowo wygenerowany identyfikator `id` z sekwencji autoincrement w bazie i zwraca kompletny obiekt.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```javascript
+const fs = require('fs');
+const path = require('path');
+
+// Ręczne parsowanie pliku konfiguracyjnego środowiska .env w celu wdrożenia zmiennych połączeniowych do Prisma Client.
+// Krok ten jest konieczny, gdy skrypt jest uruchamiany bezpośrednio poza środowiskiem frameworka Next.js.
+const envPath = path.join(__dirname, '../.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  envContent.split(/\r?\n/).forEach(line => {
+    // Pomijanie pustych linii oraz komentarzy rozpoczynających się od znaku '#'
+    if (!line || line.startsWith('#')) return;
+    const parts = line.split('=');
+    if (parts.length >= 2) {
+      const key = parts[0].trim();
+      let val = parts.slice(1).join('=').trim();
+      // Usunięcie cudzysłowów lub apostrofów z wartości zmiennej środowiskowej
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.substring(1, val.length - 1);
+      }
+      process.env[key] = val;
+    }
+  });
+}
+
+// Inicjalizacja klienta Prisma, który reprezentuje pulę połączeń z bazą danych PostgreSQL.
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+// Dynamiczny wybór i ładowanie biblioteki bcrypt lub bcryptjs w celu zapewnienia kompatybilności środowiska uruchomieniowego.
+// Służy do bezpiecznego hashowania haseł (algorytm Blowfish) przed zapisem do bazy.
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch (e) {
+  try {
+    bcrypt = require('bcryptjs');
+  } catch (err) {
+    console.error('Neither bcrypt nor bcryptjs could be loaded. Please ensure one of them is installed.');
+    process.exit(1);
+  }
+}
+
+// Główna funkcja asynchroniczna zarządzająca procesem zasiewania bazy danych.
+async function main() {
+  try {
+    console.log('Checking database status...');
+    
+    // Weryfikacja obecności pliku wejściowego user.json zawierającego domyślne konta użytkowników.
+    const userJsonPath = path.join(__dirname, '../user.json');
+    if (!fs.existsSync(userJsonPath)) {
+      console.error('user.json file not found at:', userJsonPath);
+      process.exit(1);
+    }
+    
+    const usersData = JSON.parse(fs.readFileSync(userJsonPath, 'utf-8'));
+    let createdCount = 0;
+    
+    // Iteracja po wszystkich zdefiniowanych kontach w celu weryfikacji ich obecności w systemie.
+    for (const userData of usersData) {
+      // Wykonanie zapytania SELECT z filtrem unikalnym w celu identyfikacji istniejących rekordów.
+      // Wykorzystuje unikalny indeks na kolumnie 'email' w tabeli User.
+      const existingUser = await prisma.user.findUnique({
+        where: { email: userData.email }
+      });
+      
+      // Jeżeli użytkownik nie istnieje w bazie, następuje proces hashowania hasła oraz operacja INSERT.
+      if (!existingUser) {
+        // Zastosowanie soli o współczynniku kosztu (salt rounds) równym 10.
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        
+        // Zapis rekordu do bazy (zapytanie INSERT).
+        await prisma.user.create({
+          data: {
+            email: userData.email,
+            name: userData.name,
+            password: hashedPassword,
+          }
+        });
+        console.log(`Created default user: ${userData.email}`);
+        createdCount++;
+      } else {
+        console.log(`User already exists: ${userData.email}`);
+      }
+    }
+    
+    if (createdCount > 0) {
+      console.log(`Seeding complete. Created ${createdCount} default users.`);
+    } else {
+      console.log('All default users already exist in the database. No seeding needed.');
+    }
+  } catch (error) {
+    console.error('Error during database check/seed:', error);
+    process.exit(1);
+  } finally {
+    // Krytyczne zamknięcie połączenia z bazą w celu zwolnienia zasobów w puli połączeń.
+    await prisma.$disconnect();
+  }
+}
+
+// Uruchomienie głównego wątku skryptu.
+main();
+```

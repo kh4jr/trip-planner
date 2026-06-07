@@ -1,0 +1,226 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `actions.ts` zawiera Server Actions (funkcje serwerowe Next.js) odpowiedzialne za modyfikowanie stanu bazy danych (operacje zapisu, aktualizacji oraz usuwania - mutations). Operacje te są wywoływane bezpośrednio przez komponenty klienckie i serwerowe.
+
+Identyfikacja operacji CRUD:
+- **Insert (Zapis)**:
+  - `createTrip` – tworzy rekord podróży (`Trip`) oraz kaskadowo/powiązanie dodaje rekordy uczestników (`Participant`).
+  - `addExpense` – dodaje rekord wydatku (`Expense`).
+  - `addNote` – dodaje rekord notatki/zadania organizacyjnego (`Note`).
+  - `addTodoAction` – dodaje rekord przedmiotu do spakowania (`TripItem`).
+- **Update (Aktualizacja)**:
+  - `toggleNote` – modyfikuje status zakończenia notatki (`isCompleted`).
+  - `toggleTodoAction` – modyfikuje status spakowania przedmiotu (`isCompleted` w `TripItem`).
+- **Delete (Usuwanie)**:
+  - `deleteExpense` – usuwa rekord wydatku (`Expense`) po kluczu głównym.
+  - `deleteNote` – usuwa rekord notatki (`Note`) po kluczu głównym.
+  - `deleteTodoAction` – usuwa rekord przedmiotu do spakowania (`TripItem`) po kluczu głównym.
+
+Interpretacja SQL:
+1. **createTrip**: Prisma realizuje operację zagnieżdżonego tworzenia (nested write) jako transakcję SQL (`BEGIN ... COMMIT`). Najpierw wstawiana jest podróż, pobierane jest jej wygenerowane `id`, następnie wstawiani są uczestnicy, a na końcu ich klucze główne są powiązywane w tabeli łączącej:
+   ```sql
+   BEGIN;
+   INSERT INTO "Trip" ("name", "destination", "location", "description", "startDate", "endDate", "ownerId", "createdAt") 
+   VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP) 
+   RETURNING "id";
+   -- Dla każdego uczestnika:
+   INSERT INTO "Participant" ("name", "email", "role") 
+   VALUES ($8, $9, $10) 
+   RETURNING "id";
+   -- Wstawienie relacji do tabeli łączącej:
+   INSERT INTO "_ParticipantToTrip" ("A", "B") VALUES ($11, $12);
+   COMMIT;
+   ```
+2. **addExpense**:
+   ```sql
+   INSERT INTO "Expense" ("description", "amount", "paidBy", "category", "tripId") 
+   VALUES ($1, $2, $3, $4, $5) 
+   RETURNING "id";
+   ```
+3. **deleteExpense**:
+   ```sql
+   DELETE FROM "Expense" WHERE "id" = $1;
+   ```
+4. **toggleNote**:
+   ```sql
+   UPDATE "Note" SET "isCompleted" = $1 WHERE "id" = $2;
+   ```
+5. **deleteTodoAction**:
+   ```sql
+   DELETE FROM "TripItem" WHERE "id" = $1;
+   ```
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+'use server'
+
+import { db } from './db'
+import { revalidatePath } from 'next/cache'
+
+// Interfejs opisujący strukturę danych przesyłanych podczas tworzenia wycieczki.
+export interface TripFormData {
+  name: string;
+  destination: string;
+  location?: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  participants: {
+    name: string;
+    email?: string;
+    role?: string;
+  }[];
+}
+
+// Akcja serwerowa tworząca nową podróż wraz z powiązanymi uczestnikami.
+// Całość wykonywana jest w ramach jednej transakcji ACID na poziomie bazy danych.
+export async function createTrip(
+  data: TripFormData,
+  ownerId: number
+) {
+  try {
+    const trip = await db.trip.create({
+      data: {
+        name: data.name,
+        destination: data.destination,
+        location: data.location || null,
+        description: data.description || null,
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        ownerId: ownerId, // Powiązanie klucza obcego właściciela wycieczki.
+
+        // Zagnieżdżony zapis: automatyczne tworzenie rekordów uczestników (Participant)
+        // i uzupełnienie tabeli łączącej relacji wiele-do-wielu _ParticipantToTrip.
+        participants: {
+          create: data.participants.map((p) => ({
+            name: p.name,
+            email: p.email || "",
+            role: p.role || "member",
+          })),
+        },
+      },
+    });
+
+    // Inwalidacja cache Next.js dla ścieżki głównej w celu odświeżenia danych po stronie klienta.
+    revalidatePath("/");
+    return trip;
+  } catch (error) {
+    console.error("Błąd bazy:", error);
+    throw new Error("Nie udało się utworzyć podróży");
+  }
+}
+
+// Akcja dodająca wydatek powiązany z wycieczką przez klucz obcy tripId.
+export async function addExpense(
+  tripId: number,
+  data: {
+    description: string;
+    amount: number;
+    paidBy: string;
+    category: string;
+  }
+) {
+  // Wykonanie operacji INSERT na tabeli Expense. Wymaga poprawnego tripId (klucz obcy).
+  const expense = await db.expense.create({
+    data: {
+      description: data.description,
+      amount: data.amount,
+      paidBy: data.paidBy,
+      category: data.category,
+      tripId: tripId,
+    },
+  });
+
+  revalidatePath("/");
+  return expense;
+}
+
+// Akcja usuwająca wydatek na podstawie jego unikalnego klucza głównego (id).
+export async function deleteExpense(expenseId: number) {
+  try {
+    // Wykonanie operacji DELETE. Następuje wyszukiwanie po indeksie klucza głównego Expense_pkey.
+    await db.expense.delete({
+      where: { id: expenseId },
+    });
+    revalidatePath('/');
+  } catch (error) {
+    console.error("Błąd usuwania wydatku:", error);
+    throw new Error("Nie udało się usunąć wydatku");
+  }
+}
+
+// Akcja dodająca notatkę powiązaną z wycieczką.
+export async function addNote(
+  tripId: number,
+  content: string
+) {
+  // Wstawienie nowego rekordu w tabeli Note. Pozostałe pola otrzymują wartości domyślne określone w schemacie Prisma.
+  const note = await db.note.create({
+    data: {
+      content,
+      tripId,
+    },
+  });
+
+  revalidatePath("/");
+  return note;
+}
+
+// Akcja aktualizująca stan realizacji notatki/zadania.
+export async function toggleNote(noteId: number, isCompleted: boolean) {
+  // Zapytanie UPDATE wyszukujące rekord po kluczu głównym (id) i aktualizujące kolumnę isCompleted.
+  await db.note.update({
+    where: { id: noteId },
+    data: { isCompleted },
+  });
+  revalidatePath('/');
+}
+
+// Akcja usuwająca notatkę na podstawie jej klucza głównego.
+export async function deleteNote(noteId: number) {
+  await db.note.delete({ where: { id: noteId } });
+  revalidatePath('/');
+}
+
+// Akcja tworząca przedmiot do spakowania (TripItem) przypisany do danej podróży.
+export async function addTodoAction(
+  tripId: number,
+  name: string
+) {
+  try {
+    // Wykonanie operacji INSERT w tabeli TripItem z ustawieniem domyślnego statusu isCompleted: false.
+    const todo = await db.tripItem.create({
+      data: {
+        name,
+        tripId,
+        isCompleted: false,
+      },
+    });
+
+    revalidatePath('/');
+    return todo;
+  } catch (error) {
+    console.error("Błąd dodawania zadania:", error);
+    throw new Error("Nie udało się zapisać zadania");
+  }
+}
+
+// Akcja aktualizująca status spakowania przedmiotu.
+export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
+  // Wykonanie zapytania UPDATE na tabeli TripItem w oparciu o unikalny indeks klucza głównego.
+  await db.tripItem.update({
+    where: { id: todoId },
+    data: { isCompleted }
+  });
+  revalidatePath('/');
+}
+
+// Akcja usuwająca przedmiot z listy rzeczy do spakowania.
+export async function deleteTodoAction(todoId: number) {
+  // Wykonanie operacji DELETE.
+  await db.tripItem.delete({ where: { id: todoId } });
+  revalidatePath('/');
+}
+```

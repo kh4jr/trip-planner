@@ -1,0 +1,202 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) odpowiedzialny za pobieranie, wyświetlanie oraz procesowanie (akceptacja/odrzucenie) przychodzących zaproszeń do grona znajomych.
+- **Typ komponentu**: Client Component (komponent kliencki), realizujący asynchroniczne żądania sieciowe fetch oraz aktualizujący stany lokalne interfejsu (loading, lista zaproszeń, obsługa powiadomień alert).
+- **Definicja Props**:
+  - `onAction`: Funkcja typu callback wywoływana po udanym zaakceptowaniu lub odrzuceniu zaproszenia. Służy do powiadomienia komponentu nadrzędnego (np. w celu odświeżenia głównej listy znajomych).
+- **Główna Logika Biznesowa**:
+  - `fetchInvites`: Wysyła zapytanie GET do `/api/friends/invites` w celu pobrania listy oczekujących zaproszeń przeznaczonych dla zalogowanego użytkownika.
+  - `handleAccept`: Wysyła żądanie PUT do `/api/friends` z identyfikatorem nadawcy zaproszenia w celu sfinalizowania relacji znajomości w bazie danych.
+  - `handleReject`: Wysyła żądanie DELETE do `/api/friends` z flagą `mode: "invite"`, co powoduje usunięcie rekordu zaproszenia z bazy.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+
+import { useEffect, useState } from "react";
+import Alert from "@/components/ui/Alert";
+
+// Typowanie obiektu zaproszenia (Invite)
+type Invite = {
+  id: number;
+  user: {
+    id: number;
+    name: string | null;
+    email: string;
+  };
+};
+
+export default function FriendsInvites({
+  onAction,
+}: {
+  onAction: () => void;
+}) {
+  // Stan przechowujący listę zaproszeń
+  const [invites, setInvites] = useState<Invite[]>([]);
+  // Flaga ładowania początkowego listy
+  const [loading, setLoading] = useState(true);
+  // Identyfikator przetwarzanej akcji w celu zablokowania przycisków (np. zapobieganie double-submit)
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  // Stan komunikatu informacyjnego wyświetlanego na górze listy
+  const [alert, setAlert] = useState<{
+    type: "success" | "error" | "info";
+    title: string;
+    description?: string;
+  } | null>(null);
+
+  // Pobranie danych w momencie zamontowania komponentu (lifecycle hook)
+  useEffect(() => {
+    fetchInvites();
+  }, []);
+
+  /**
+   * Funkcja pobierająca zaproszenia z bazy danych przez API.
+   */
+  async function fetchInvites() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/friends/invites");
+      if (!res.ok) return;
+      setInvites(await res.json());
+    } {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Obsługa akceptacji zaproszenia.
+   * Wykonuje zapytanie PUT do endpointu znajomych.
+   */
+  async function handleAccept(invite: Invite) {
+    setActionLoading(invite.id); // Blokujemy przyciski dla danego wiersza
+    setAlert(null); // Czyszczenie starego alertu
+
+    const res = await fetch("/api/friends", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        friendId: invite.user.id,
+      }),
+    });
+
+    if (res.ok) {
+      setAlert({
+        type: "success",
+        title: "Zaproszenie zaakceptowane",
+        description: "Znajomy został dodany do Twojej listy",
+      });
+      await fetchInvites(); // Pobranie nowej listy zaproszeń
+      onAction(); // Powiadomienie komponentu nadrzędnego
+    } else {
+      setAlert({
+        type: "error",
+        title: "Błąd",
+        description: "Nie udało się zaakceptować zaproszenia",
+      });
+    }
+
+    setActionLoading(null);
+  }
+
+  /**
+   * Obsługa odrzucenia zaproszenia.
+   * Wykonuje zapytanie DELETE z parametrem mode: "invite".
+   */
+  async function handleReject(invite: Invite) {
+    setActionLoading(invite.id);
+    setAlert(null);
+
+    const res = await fetch("/api/friends", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        friendId: invite.user.id,
+        mode: "invite", // Określamy tryb usuwania na odrzucenie zaproszenia
+      }),
+    });
+
+    if (res.ok) {
+      setAlert({
+        type: "info",
+        title: "Zaproszenie odrzucone",
+      });
+      await fetchInvites();
+      onAction();
+    } else {
+      setAlert({
+        type: "error",
+        title: "Błąd",
+        description: "Nie udało się odrzucić zaproszenia",
+      });
+    }
+
+    setActionLoading(null);
+  }
+
+  // Wczesny powrót - jeśli trwa ładowanie lub lista zaproszeń jest pusta, ukrywamy komponent
+  if (loading) return null;
+  if (invites.length === 0) return null;
+
+  return (
+    <div className="mt-6 bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
+      <h3 className="text-sm font-black uppercase tracking-widest text-blue-300 mb-4">
+        Zaproszenia do znajomych
+      </h3>
+
+      {alert && (
+        <Alert
+          type={alert.type}
+          title={alert.title}
+          description={alert.description}
+          isVisible={true}
+          onClose={() => setAlert(null)}
+        />
+      )}
+
+      <div className="space-y-3">
+        {invites.map((invite) => (
+          <div
+            key={invite.id}
+            className="flex justify-between items-center p-4 rounded-xl bg-amber-50"
+          >
+            <div>
+              <p className="font-black text-blue-900">
+                {invite.user.name || invite.user.email}
+              </p>
+              <p className="text-xs text-blue-400 font-bold">
+                wysłał zaproszenie
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                disabled={actionLoading === invite.id}
+                onClick={() => handleAccept(invite)}
+                className="px-3 py-2 text-xs font-black rounded-lg
+                           bg-green-100 text-green-700
+                           hover:bg-green-200
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Akceptuj
+              </button>
+
+              <button
+                disabled={actionLoading === invite.id}
+                onClick={() => handleReject(invite)}
+                className="px-3 py-2 text-xs font-black rounded-lg
+                           bg-red-100 text-red-600
+                           hover:bg-red-200
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Odrzuć
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```

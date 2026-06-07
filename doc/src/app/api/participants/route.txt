@@ -1,0 +1,39 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/participants/route.ts` służy jako **API Route Endpoint** w Next.js, odpowiadając za pobieranie rekordów uczestników (Participants) powiązanych z określonym identyfikatorem użytkownika (`userId`). 
+Obsługuje wyłącznie metodę **GET**:
+1. **Pobieranie userId**: Odczytuje parametr `userId` z parametrów zapytania w URL. Jeśli brak parametru, zwraca błąd `400 Bad Request`.
+2. **Zapytanie do bazy danych**: Za pomocą Prisma wyszukuje w bazie wszystkie rekordy w tabeli `Participant`, w których pole `userId` odpowiada przekazanej wartości. Rekordy te reprezentują powiązania użytkownika jako uczestnika wyjazdów (bądź ogólniej, uczestnika systemu powiązanego z wyjazdami).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+/**
+ * Endpoint GET - Pobieranie wpisów uczestnika na podstawie identyfikatora użytkownika.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON z listą rekordów uczestnika lub błędem 400
+ */
+export async function GET(req: Request) {
+  // Parsowanie adresu URL w celu wyodrębnienia parametrów wyszukiwania
+  const { searchParams } = new URL(req.url);
+  const userId = searchParams.get("userId");
+
+  // Jeśli nie podano userId, zwracamy błąd 400 (Bad Request)
+  if (!userId) return NextResponse.json({ error: "Brak userId" }, { status: 400 });
+
+  // Odpytanie bazy danych o rekordy uczestnictwa przypisane do danego identyfikatora użytkownika
+  const participants = await db.participant.findMany({
+    where: {
+      userId: Number(userId), // Konwersja ciągu znaków na liczbę
+    },
+  });
+
+  // Zwrócenie pobranych rekordów uczestnika
+  return NextResponse.json(participants);
+}
+```

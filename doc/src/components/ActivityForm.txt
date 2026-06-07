@@ -1,0 +1,130 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent formularza dodawania nowej aktywności (ActivityForm Component) powiązanej z daną podróżą. Jest to komponent kliencki (zadeklarowany jako `"use client"`), który zarządza lokalnym stanem formularza oraz komunikuje się asynchronicznie z endpointem API w celu zapisu danych.
+- **Logika biznesowa i zarządzanie stanem**:
+  - Przechowuje w lokalnym stanie `useState` dane wejściowe formularza: nazwę aktywności (`name`), planowaną datę i godzinę (`time`) oraz stan ładowania (`loading`).
+  - Waliduje pola przed wysłaniem żądania (wymagana obecność nazwy oraz czasu).
+  - Wysłanie formularza uruchamia asynchroniczną funkcję `handleSubmit`, która wysyła zapytanie typu `POST` do wewnętrznego API `/api/activities` z ładunkiem JSON `{ name, time, tripId }`.
+  - W przypadku powodzenia (status odpowiedzi `ok`), deserializuje zapisaną aktywność typu `Activity` (pochodzącą z modeli Prisma bazy danych) i wywołuje callback `onSave(savedActivity)`, resetując formularz.
+  - Obsługuje potencjalne błędy zapytania sieciowego (wyświetlając natywny komunikat `alert` oraz logując błąd w konsoli).
+  - Wyłącza przycisk zapisu na czas trwania operacji sieciowej (`disabled={loading}`) zapobiegając wielokrotnemu wysyłaniu tych samych żądań.
+- **Struktura wizualna i renderowanie danych**:
+  - Element formularza `<form>` z polami wprowadzania tekstu (`input` o typie domyślnym oraz `datetime-local`).
+  - Przycisk wysyłania (Zapisz) oraz przycisk rezygnacji (Anuluj) wywołujący callback `onCancel`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+"use client"; // Komponent kliencki - wymagany ze względu na obsługę lokalnego stanu formularza (useState) i wysyłanie zapytań fetch.
+
+import { useState } from "react";
+import { Activity } from "@prisma/client"; // Import typu modelu Activity wygenerowanego przez Prisma.
+
+// Definicja właściwości dla formularza aktywności.
+interface ActivityFormProps {
+  tripId: number; // Identyfikator wyjazdu, do którego przypisujemy aktywność.
+  onSave: (activity: Activity) => void; // Callback uruchamiany po pomyślnym zapisie w bazie danych.
+  onCancel: () => void; // Callback anulowania operacji (powrót).
+}
+
+// Główna definicja komponentu formularza.
+export default function ActivityForm({
+  tripId,
+  onSave,
+  onCancel,
+}: ActivityFormProps) {
+  // Deklaracja stanów lokalnych dla pól formularza i obsługi asynchroniczności.
+  const [name, setName] = useState("");
+  const [time, setTime] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Asynchroniczna metoda obsługi wysłania formularza.
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); // Zablokowanie domyślnego przeładowania strony po wysłaniu formularza HTML.
+    if (!name || !time) return; // Podstawowa walidacja pól formularza.
+
+    setLoading(true); // Aktywacja stanu ładowania (np. wyłączenie przycisków).
+    try {
+      // Wykonanie zapytania HTTP POST do endpointu API Next.js.
+      const res = await fetch("/api/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          time,
+          tripId,
+        }),
+      });
+
+      // Sprawdzenie, czy serwer odpowiedział poprawnym statusem HTTP.
+      if (!res.ok) {
+        throw new Error("Błąd zapisu aktywności");
+      }
+
+      // Odczytanie zwróconego obiektu nowej aktywności z bazy danych.
+      const savedActivity: Activity = await res.json();
+      onSave(savedActivity); // Poinformowanie komponentu nadrzędnego o sukcesie zapisu.
+      setName(""); // Resetowanie pól formularza.
+      setTime("");
+    } catch (err) {
+      console.error(err);
+      alert("Nie udało się dodać aktywności"); // Wyświetlenie komunikatu o błędzie.
+    } finally {
+      setLoading(false); // Przywrócenie pierwotnego stanu przycisków.
+    }
+  };
+
+  return (
+    // Deklaracja struktury formularza ze spójną stylizacją.
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 border p-6 rounded-2xl bg-white shadow-sm"
+    >
+      <h3 className="text-xl font-black text-blue-900">
+        Nowa aktywność
+      </h3>
+
+      {/* Pole tekstowe nazwy aktywności */}
+      <input
+        className="w-full p-3 border rounded-xl text-black font-bold"
+        placeholder="Co planujesz?"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        required
+      />
+
+      {/* Pole wyboru daty i godziny (datetime-local) */}
+      <input
+        type="datetime-local"
+        className="w-full p-3 border rounded-xl text-black font-bold"
+        value={time}
+        onChange={(e) => setTime(e.target.value)}
+        required
+      />
+
+      {/* Sekcja przycisków akcji */}
+      <div className="flex gap-3">
+        {/* Przycisk zapisu (zatwierdza formularz) - dezaktywowany podczas zapytania sieciowego */}
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black hover:bg-blue-700 transition"
+        >
+          Zapisz
+        </button>
+        {/* Przycisk anulowania akcji */}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition"
+        >
+          Anuluj
+        </button>
+      </div>
+    </form>
+  );
+}
+```
+---

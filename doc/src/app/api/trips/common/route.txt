@@ -1,0 +1,67 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/trips/common/route.ts` działa jako **API Route Endpoint** w Next.js i odpowiada za pobieranie listy wspólnych wyjazdów (Trips) pomiędzy zalogowanym użytkownikiem a jego wybranym znajomym.
+Obsługuje wyłącznie zapytania typu **GET**:
+1. **Weryfikacja tożsamości użytkownika**: Sprawdza tożsamość zalogowanego użytkownika na podstawie sesji (`meId`). Jeśli użytkownik nie jest zalogowany, zwraca pustą listę ze statusem `200 OK`.
+2. **Pobieranie friendId**: Wyodrębnia identyfikator znajomego (`friendId`) z parametrów URL zapytania. W przypadku braku parametru również zwraca pustą tablicę.
+3. **Zapytanie z warunkiem logicznym AND**: Odpytuje bazę danych o wyjazdy spełniające warunek logiczny: w gronie uczestników wyjazdu (`participants`) musi znajdować się zarazem zalogowany użytkownik (`meId`), jak i wskazany znajomy (`friendId`). 
+4. **Sortowanie**: Pobrane wyjazdy są sortowane według daty rozpoczęcia (`startDate`) w kolejności malejącej (od najnowszych do najstarszych).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+/**
+ * Endpoint GET - Pobieranie podróży wspólnych dla zalogowanego użytkownika oraz wybranego znajomego.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Lista wspólnych podróży posortowana od najnowszych
+ */
+export async function GET(req: Request) {
+  // Odczytanie aktualnej sesji użytkownika
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  // Jeżeli użytkownik nie jest uwierzytelniony, zwracamy pustą listę
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Pobranie i konwersja parametru friendId z adresu URL
+  const { searchParams } = new URL(req.url);
+  const friendId = Number(searchParams.get("friendId"));
+
+  // Sprawdzenie czy poprawnie przesłano identyfikator znajomego
+  if (!friendId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Pobranie podróży z bazy danych
+  const trips = await db.trip.findMany({
+    where: {
+      // Warunek 1: Wśród uczestników wyjazdu znajduje się zalogowany użytkownik
+      participants: {
+        some: { userId: meId },
+      },
+      // Warunek 2 (połączony operatorem AND): Wśród uczestników znajduje się również znajomy
+      AND: {
+        participants: {
+          some: { userId: friendId },
+        },
+      },
+    },
+    // Sortowanie wyników chronologicznie malejąco (od najnowszych wydarzeń)
+    orderBy: {
+      startDate: "desc",
+    },
+  });
+
+  // Zwrócenie listy wspólnych wyjazdów w formacie JSON
+  return NextResponse.json(trips);
+}
+```

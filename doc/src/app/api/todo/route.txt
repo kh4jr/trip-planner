@@ -1,0 +1,116 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/todo/route.ts` działa jako **API Route Endpoint** w Next.js odpowiedzialny za obsługę listy zadań (Todo / Trip Items) przypisanych do danej podróży. Obsługuje trzy metody HTTP:
+1. **GET**: Pobiera zadania powiązane z podróżą o identyfikatorze `tripId` przekazanym w parametrach URL. Zadania te są pobierane z tabeli `TripItem` w bazie danych przy użyciu Prisma i sortowane według identyfikatora (`id`). W przypadku braku parametru zwraca błąd `400 Bad Request`.
+2. **POST**: Tworzy nowe zadanie dla danej podróży. Z ciała zapytania pobierane są dane `content` (który staje się nazwą zadania `name`) oraz `tripId`. Nowy wpis tworzony jest z domyślnym statusem `isCompleted: false`.
+3. **DELETE**: Usuwa zadanie na podstawie przekazanego w zapytaniu parametru `id`. W przypadku braku parametru, zwraca odpowiedź z błędem o statusie `400`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Pobieranie zadań (todo) dla wybranej podróży.
+ * 
+ * @param request Obiekt żądania HTTP
+ * @returns Lista zadań posortowana według identyfikatora (id)
+ */
+export async function GET(request: Request) {
+  try {
+    // Odczyt parametrów URL
+    const { searchParams } = new URL(request.url);
+    const tripId = searchParams.get("tripId");
+
+    // Walidacja czy podano tripId
+    if (!tripId) {
+      return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+    }
+
+    // Pobranie elementów z tabeli tripItem powiązanych z podróżą
+    const todos = await db.tripItem.findMany({
+      where: { tripId: Number(tripId) },
+      orderBy: { id: "asc" }, // Zachowanie stałej kolejności wyświetlania
+    });
+
+    return NextResponse.json(todos);
+  } catch (error) {
+    // Zabezpieczenie przed awarią bazy danych
+    return NextResponse.json(
+      { error: "Błąd pobierania zadań" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Endpoint POST - Dodawanie nowego zadania do listy danej podróży.
+ * 
+ * @param request Obiekt żądania HTTP z zawartością JSON
+ * @returns Utworzony obiekt zadania lub błąd walidacji/serwera
+ */
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { content, tripId } = body;
+
+    // Sprawdzenie obecności kluczowych pól
+    if (!content || !tripId) {
+      return NextResponse.json(
+        { error: "Treść zadania i ID wyjazdu są wymagane" },
+        { status: 400 }
+      );
+    }
+
+    // Tworzenie nowego wpisu w bazie danych
+    const todo = await db.tripItem.create({
+      data: {
+        name: content,              // Przypisanie tekstu zadania
+        tripId: Number(tripId),     // Powiązanie z podróżą
+        isCompleted: false,         // Domyślny status: niezrobione
+      },
+    });
+
+    return NextResponse.json(todo);
+  } catch (error) {
+    console.error("Błąd podczas tworzenia zadania:", error);
+    return NextResponse.json(
+      { error: "Wystąpił błąd podczas zapisywania zadania" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Endpoint DELETE - Usuwanie wybranego zadania.
+ * 
+ * @param request Obiekt żądania HTTP z parametrem ID w URL
+ * @returns Status powodzenia operacji
+ */
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    // Jeśli brak parametru ID, zwracany jest błąd 400 Bad Request
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Usunięcie rekordu w bazie danych na podstawie klucza głównego (id)
+    await db.tripItem.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE TODO:", error);
+    return NextResponse.json(
+      { error: "Nie udało się usunąć zadania" },
+      { status: 500 }
+    );
+  }
+}
+```

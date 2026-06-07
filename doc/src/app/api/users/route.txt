@@ -1,0 +1,125 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/users/route.ts` pełni funkcję **API Route Endpoint** w Next.js. Jego zadaniem jest wyszukiwanie zarejestrowanych użytkowników w systemie na podstawie zapytania tekstowego (`q`) oraz jednoczesne określanie ich statusu relacji (znajomości) z zalogowanym użytkownikiem. Obsługuje on wyłącznie metodę **GET**:
+1. **Autoryzacja**: Sprawdza tożsamość zalogowanego użytkownika (`meId`). W przypadku braku sesji, zwraca pustą tablicę ze statusem `200 OK`.
+2. **Wyszukiwanie użytkowników**: Odczytuje parametr `q` (fraza wyszukiwania). Wymaga minimum 2 znaków. Wyszukuje użytkowników, u których nazwa lub adres e-mail zawiera podaną frazę (wielkość liter jest ignorowana - `mode: "insensitive"`). Wyklucza z wyników samego siebie (`NOT: { id: meId }`) i ogranicza liczbę wyników do 5 (`take: 5`).
+3. **Pobieranie relacji (Friendships)**: Odpytuje bazę danych o wszelkie istniejące relacje przyjaźni między zalogowanym użytkownikiem a osobami z listy wyników wyszukiwania.
+4. **Mapowanie statusów**: Funkcja pomocnicza `getStatus` analizuje status każdej relacji w bazie i przypisuje jeden z czterech stanów:
+   - `NONE`: Brak jakiejkolwiek relacji w bazie.
+   - `ACCEPTED`: Użytkownicy są już znajomymi.
+   - `PENDING_SENT`: Zalogowany użytkownik wysłał zaproszenie, które czeka na akceptację.
+   - `PENDING_RECEIVED`: Zalogowany użytkownik otrzymał zaproszenie od danej osoby.
+5. **Zwrot danych**: Zwraca tablicę wyszukanych użytkowników rozszerzoną o pole `friendshipStatus`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Wyszukiwanie użytkowników systemu z uwzględnieniem statusu relacji znajomości.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Lista znalezionych użytkowników ze statusem znajomości (maksymalnie 5)
+ */
+export async function GET(req: Request) {
+  // Pobranie danych o sesji użytkownika wysyłającego zapytanie
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  // Bez autoryzacji zwracamy pustą listę
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Odczytanie parametru zapytania wyszukiwania 'q' z adresu URL
+  const { searchParams } = new URL(req.url);
+  const query = searchParams.get("q");
+
+  // Jeśli zapytanie jest puste lub zbyt krótkie (poniżej 2 znaków), nie przeszukujemy bazy
+  if (!query || query.length < 2) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Wyszukanie maksymalnie 5 pasujących użytkowników w bazie danych za pomocą Prisma
+  const users = await db.user.findMany({
+    where: {
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },  // Dopasowanie nazwy
+        { email: { contains: query, mode: "insensitive" } }, // Dopasowanie e-maila
+      ],
+      NOT: { id: meId }, // Wykluczenie samego siebie z wyników wyszukiwania
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+    take: 5, // Limitowanie wyników dla optymalizacji wydajności
+  });
+
+  // Jeśli nikogo nie znaleziono, zwracamy pustą tablicę bez dalszego odpytywania bazy
+  if (users.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  // Utworzenie listy identyfikatorów znalezionych użytkowników
+  const userIds = users.map((u) => u.id);
+
+  // Pobranie wszystkich relacji przyjaźni pomiędzy zalogowanym użytkownikiem a znalezionymi osobami
+  const friendships = await db.friend.findMany({
+    where: {
+      OR: [
+        {
+          userId: meId,
+          friendId: { in: userIds },
+        },
+        {
+          userId: { in: userIds },
+          friendId: meId,
+        },
+      ],
+    },
+  });
+
+  /**
+   * Funkcja pomocnicza określająca wzajemny status znajomości z danym użytkownikiem.
+   * 
+   * @param otherUserId ID drugiego użytkownika
+   * @returns "NONE" | "ACCEPTED" | "PENDING_SENT" | "PENDING_RECEIVED"
+   */
+  function getStatus(otherUserId: number) {
+    // Wyszukanie konkretnej relacji w pobranej wcześniej z bazy tablicy friendships
+    const relation = friendships.find(
+      (f) =>
+        (f.userId === meId && f.friendId === otherUserId) ||
+        (f.userId === otherUserId && f.friendId === meId)
+    );
+
+    if (!relation) return "NONE";
+
+    if (relation.status === "ACCEPTED") {
+      return "ACCEPTED";
+    }
+
+    // Sprawdzenie kto jest nadawcą zaproszenia oczekującego na akceptację
+    if (relation.userId === meId) {
+      return "PENDING_SENT"; // Wysłane przez zalogowanego
+    }
+
+    return "PENDING_RECEIVED"; // Otrzymane od drugiej osoby
+  }
+
+  // Połączenie danych profilowych użytkowników ze statusem ich znajomości
+  const result = users.map((u) => ({
+    ...u,
+    friendshipStatus: getStatus(u.id),
+  }));
+
+  return NextResponse.json(result);
+}
+```

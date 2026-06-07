@@ -1,0 +1,68 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent przycisku uwierzytelniania (AuthButton Component) zintegrowany z mechanizmem NextAuth. Zarządza przełączaniem widoków zalogowanego/niezalogowanego użytkownika w nagłówku aplikacji. Jest to komponent kliencki (zadeklarowany jako `"use client"`).
+- **Logika biznesowa i zarządzanie stanem**:
+  - Wykorzystuje hook `useSession` do odczytywania aktualnego stanu sesji po stronie klienta.
+  - Wykorzystuje lokalny stan `isModalOpen` (`useState`) do kontrolowania widoczności okna modalnego logowania/rejestracji (`AuthModal`).
+  - Oferuje funkcjonalność wylogowania poprzez bezpośrednie wywołanie metody `signOut()` dostarczanej przez NextAuth.
+- **Struktura wizualna i renderowanie danych**:
+  - Jeśli sesja istnieje (użytkownik zalogowany): Renderuje spersonalizowane powitanie ("Witaj, [Nazwa]!") oraz przycisk "Wyloguj" w kolorze czerwonym.
+  - Jeśli sesja nie istnieje (użytkownik niezalogowany): Renderuje zielony przycisk "Zaloguj się", który otwiera formularz uwierzytelniania, oraz deklaruje komponent `<AuthModal>`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+"use client"; // Komponent kliencki - operuje na hooku stanu sesji i reaguje na zdarzenia kliknięcia w czasie rzeczywistym.
+
+import { useSession, signOut } from 'next-auth/react'; // Hook dostępu do sesji oraz funkcja wylogowywania z NextAuth.
+import { useState } from 'react';
+import AuthModal from './AuthModal'; // Modalny komponent formularza logowania/rejestracji.
+
+// Główna definicja komponentu AuthButton.
+export default function AuthButton() {
+  const { data: session } = useSession(); // Pobranie bieżącego obiektu sesji użytkownika.
+  const [isModalOpen, setIsModalOpen] = useState(false); // Stan przechowujący informację o otwarciu modala logowania.
+
+  // Warunek renderowania dla zalogowanego użytkownika.
+  if (session) {
+    return (
+      <div className="flex items-center space-x-4">
+        {/* Powitanie użytkownika, w przypadku braku nazwy wyświetlana jest fraza domyślna */}
+        <p className="text-white">
+          Witaj, {session.user?.name || 'Użytkowniku'}!
+        </p>
+
+        {/* Przycisk wylogowania wywołujący funkcję signOut z NextAuth */}
+        <button
+          onClick={() => signOut()}
+          className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded"
+        >
+          Wyloguj
+        </button>
+      </div>
+    );
+  }
+
+  // Widok dla użytkownika niezalogowanego (domyślny).
+  return (
+    <>
+      {/* Przycisk logowania otwierający okno modalne */}
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded"
+      >
+        Zaloguj się
+      </button>
+
+      {/* Wywołanie komponentu modala z przekazaniem stanu otwarcia i funkcji zamykającej */}
+      <AuthModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+    </>
+  );
+}
+```
+---

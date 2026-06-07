@@ -1,0 +1,85 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/users/search/route.ts` udostępnia prosty punkt końcowy wyszukiwania użytkowników na podstawie nazwy lub adresu e-mail bez dodatkowego sprawdzania statusów znajomości. Jest wykorzystywany do szybkiego autouzupełniania list użytkowników w interfejsie.
+
+**Operacje CRUD:**
+- **Select (Read)**: Wyszukiwanie do 10 użytkowników spełniających warunek dopasowania frazy tekstowej (case-insensitive `contains`) do kolumny `name` lub `email`.
+
+**Interpretacja SQL:**
+Metoda Prisma Client:
+```typescript
+const users = await db.user.findMany({
+  where: {
+    OR: [
+      { name: { contains: q, mode: "insensitive" } },
+      { email: { contains: q, mode: "insensitive" } },
+    ],
+  },
+  select: {
+    id: true,
+    name: true,
+    email: true,
+  },
+  take: 10,
+});
+```
+
+Przekłada się na następujące surowe zapytanie SQL w bazie danych PostgreSQL:
+```sql
+SELECT 
+    "id", 
+    "name", 
+    "email" 
+FROM 
+    "User" 
+WHERE 
+    "name" ILIKE $1 
+    OR "email" ILIKE $2
+LIMIT 10;
+```
+*Wyjaśnienie wykonania zapytania:*
+- Zapytanie filtruje rekordy w tabeli `User` przy użyciu operacji `ILIKE`, sprawdzając obecność frazy `%q%` w kolumnach `name` i `email` bez uwzględniania wielkości liter.
+- Klauzula `LIMIT 10` ogranicza liczbę pobieranych rekordów do maksymalnie 10, co przyspiesza działanie wyszukiwarki typu typeahead/autocomplete.
+- Wybór pól (`select`) ogranicza przesyłane z bazy danych kolumny tylko do `id`, `name` i `email`, oszczędzając pasmo sieciowe oraz chroniąc hasło przed wyciekiem.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+export async function GET(req: Request) {
+  // Pobranie parametrów URL w celu wydobycia frazy wyszukiwania 'q'
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q");
+
+  // Minimalna długość frazy wynosi 2 znaki w celu zapobiegania przeciążeniu bazy danych wyszukiwaniami jednoznakowymi
+  if (!q || q.length < 2) {
+    return NextResponse.json([]);
+  }
+
+  // Odpytanie bazy danych (operacja SELECT z warunkiem OR ILIKE)
+  // Wyszukiwanie wysyła zapytanie do kolumny "name" oraz "email".
+  // Wyszukiwanie jest odporne na wielkość liter ("insensitive") przy użyciu operatora ILIKE w PostgreSQL.
+  // Parametr "take: 10" nakłada ograniczenie LIMIT 10 w zapytaniu SQL, optymalizując czas odpowiedzi.
+  // Dane wyjściowe są ściśle ograniczone (select) do identyfikatora, nazwy i adresu e-mail.
+  const users = await db.user.findMany({
+    where: {
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+    take: 10,
+  });
+
+  // Zwrócenie listy wyszukanych użytkowników w formacie JSON
+  return NextResponse.json(users);
+}
+```

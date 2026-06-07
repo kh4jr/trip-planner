@@ -1,0 +1,85 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) prezentujący podział zadań wyjazdu na listę pakowania rzeczy (`packing`) oraz listę zadań do zrobienia przed lub w trakcie podróży (`todo`).
+- **Typ komponentu**: Client Component (komponent kliencki), umożliwiający interaktywne odznaczanie statusu zadań (zrealizowane / do zrobienia).
+- **Definicja Props**:
+  - `tripId`: Identyfikator powiązanej podróży.
+  - `tripItems`: Tablica elementów zadań/rzeczy typu `TripItem`.
+  - `participantsMap`: Słownik/Mapa uczestników służąca do ewentualnego mapowania osób odpowiedzialnych za zadanie.
+  - `onToggleItem`: Callback wywoływany w celu zmiany stanu zadania (wykonane / niewykonane) w bazie danych lub stanie nadrzędnym.
+- **Główna Logika Biznesowa**:
+  - Separacja kategorii: Za pomocą funkcji `.filter()` rozdziela zadania na dwie odrębne listy w oparciu o pole `category` ('packing' vs 'todo').
+  - Renderowanie komponentów: Używa generycznej funkcji pomocniczej `renderList`, co redukuje powtarzalność kodu (zasada DRY).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+
+import { TripItem, Participant } from '@/lib/data';
+
+// Interfejs określający typy propsów wejściowych dla modułu zadań
+interface TasksModuleProps {
+    tripId: number;
+    tripItems: TripItem[];
+    participantsMap: Map<number, Participant>; 
+    onToggleItem: (itemId: number) => void;
+}
+
+export default function TasksModule({ tripItems, participantsMap, onToggleItem }: TasksModuleProps) {
+    // Filtrowanie elementów na listę rzeczy do spakowania
+    const packingList = tripItems.filter(item => item.category === 'packing');
+    // Filtrowanie elementów na listę zadań do wykonania (To-Do)
+    const todoList = tripItems.filter(item => item.category === 'todo');
+
+    /**
+     * Pomocnicza funkcja generująca sekcję listy o określonym tytule i elementach.
+     * Zapobiega powielaniu szablonu HTML (redundancji kodu).
+     */
+    const renderList = (list: TripItem[], title: string) => (
+        <div className="mb-8">
+            <h3 className="text-xl font-semibold mb-4 text-gray-700">{title}</h3>
+            <ul className="space-y-3">
+                {list.map(item => (
+                    <li key={item.id} className={`p-3 rounded-lg flex items-center justify-between transition-colors ${item.isCompleted ? 'bg-green-50' : 'bg-gray-50'}`}>
+                        <div className="flex items-center">
+                            {/* Checkbox wyzwalający zmianę statusu ukończenia zadania */}
+                            <input
+                                type="checkbox"
+                                checked={item.isCompleted}
+                                onChange={() => onToggleItem(item.id)}
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                            />
+                            <span className={`ml-3 ${item.isCompleted ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                {item.name}
+                            </span>
+                        </div>
+                        {/* Placeholder dla przyszłej logiki przypisywania zadań do konkretnych osób */}
+                        <div className="text-sm text-blue-500">
+                           Odp.: Wszyscy
+                        </div>
+                    </li>
+                ))}
+            </ul>
+             {/* Przycisk aktywujący informację o planowanym rozwoju aplikacji */}
+             <button 
+                onClick={() => alert(`W przyszłości otworzę formularz dodawania ${title.toLowerCase()}!`)}
+                className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-1 px-4 rounded text-sm"
+            >
+                + Dodaj {title === 'Lista Pakowania' ? 'Rzecz' : 'Zadanie'}
+            </button>
+        </div>
+    );
+
+    return (
+        <div>
+            {/* Wyrenderowanie listy rzeczy do spakowania */}
+            {renderList(packingList, 'Lista Pakowania')}
+            <hr className="my-6" />
+            {/* Wyrenderowanie listy zadań do zrobienia */}
+            {renderList(todoList, 'Zadania do Wykonania')}
+        </div>
+    );
+}
+```

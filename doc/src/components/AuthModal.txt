@@ -1,0 +1,183 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent okna modalnego autoryzacji (AuthModal Component) obsługujący logowanie oraz rejestrację nowych kont użytkowników. Jest to komponent kliencki (zadeklarowany jako `'use client'`), który łączy formularze autoryzacyjne w jeden spójny element interfejsu.
+- **Logika biznesowa i zarządzanie stanem**:
+  - Kontroluje wyświetlanie samego okna na podstawie właściwości `isOpen`. Jeśli jest fałszywa, komponent zwraca `null`.
+  - Przechowuje lokalny stan pól formularza: tryb logowania/rejestracji (`isLoginMode`), adres e-mail (`email`), hasło (`password`), imię (`name`), błąd autoryzacji (`error`) oraz flagę oczekiwania na odpowiedź serwera (`loading`).
+  - Obsługuje wysłanie formularza w metodzie `handleSubmit`:
+    - **W trybie logowania (`isLoginMode === true`)**: Wywołuje metodę `signIn` z pakietu `next-auth/react` z dostawcą typu `'credentials'`. W przypadku powodzenia zamyka modal i odświeża stronę (`window.location.reload()`), aby zaktualizować dane sesji w komponentach Next.js. W razie błędu ustawia odpowiedni komunikat w stanie `error`.
+    - **W trybie rejestracji (`isLoginMode === false`)**: Wysyła żądanie `POST` do wewnętrznego punktu końcowego API `/api/auth/register`. Po pomyślnej rejestracji przełącza modal w tryb logowania (`isLoginMode = true`) i informuje o sukcesie. Obsługuje błędy walidacji serwera oraz błędy sieciowe.
+- **Struktura wizualna i renderowanie danych**:
+  - Nakładka przyciemniająca tło z rozmyciem (`bg-black/60 backdrop-blur-sm`).
+  - Karta modalna o szerokości dopasowanej do urządzeń mobilnych z wyraźnym niebieskim nagłówkiem.
+  - Pola formularza renderowane warunkowo (pole "Imię" ukazuje się tylko podczas tworzenia konta).
+  - Przyciski akcji z dynamicznymi etykietami zależnymi od stanu połączenia sieciowego.
+  - Odnośnik dolny przełączający tryb pracy formularza (Logowanie ↔ Rejestracja).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+'use client'; // Komponent kliencki. Wymaga obsługi stanów pól formularza, asynchronicznej obsługi submitu oraz metod przeglądarki (np. window.location.reload).
+
+import { signIn } from 'next-auth/react'; // Funkcja pomocnicza NextAuth do inicjowania procesu logowania.
+import { useState } from 'react';
+
+// Typowanie właściwości wejściowych (Props) dla komponentu.
+type Props = {
+  isOpen: boolean; // Określa widoczność modala.
+  onClose: () => void; // Funkcja zamykająca modal.
+};
+
+// Definicja głównego komponentu AuthModal.
+export default function AuthModal({ isOpen, onClose }: Props) {
+  // Deklaracja stanów lokalnych komponentu formularza.
+  const [isLoginMode, setIsLoginMode] = useState(true); // Tryb pracy formularza (true = Logowanie, false = Rejestracja).
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Modal nie jest renderowany w drzewie DOM, jeśli isOpen ma wartość false.
+  if (!isOpen) return null;
+
+  // Główny handler obsługujący zatwierdzenie formularza.
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(''); // Czyszczenie poprzednich błędów.
+    setLoading(true); // Uruchomienie stanu ładowania.
+
+    if (isLoginMode) {
+      // Wywołanie logowania opartego na poświadczeniach (Credentials Provider) bez automatycznego przekierowania.
+      const result = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+      });
+
+      if (result?.error) {
+        setError('Nieprawidłowy email lub hasło'); // Wyświetlenie komunikatu o nieudanym logowaniu.
+      } else {
+        onClose(); // Zamknięcie modala.
+        window.location.reload(); // Wymuszenie przeładowania strony w celu pobrania nowej sesji przez Next.js.
+      }
+    } else {
+      try {
+        // Wysłanie zapytania do endpointu rejestracji użytkownika.
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, name }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          setIsLoginMode(true); // Przełączenie na tryb logowania po udanej rejestracji.
+          alert("Konto utworzone! Możesz się zalogować.");
+        } else {
+          setError(data.message || 'Błąd rejestracji');
+        }
+      } catch (err) {
+        setError('Błąd połączenia z serwerem'); // Obsługa braku odpowiedzi serwera.
+      }
+    }
+    setLoading(false); // Zakończenie stanu ładowania.
+  };
+
+  return (
+    // Kontener nakładki (overlay) pozycjonowany na stałe (fixed).
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {/* Kontener okna formularza */}
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        
+        {/* Niebieski nagłówek karty z opisem trybu działania */}
+        <div className="bg-blue-600 p-6 text-white text-center">
+          <h2 className="text-2xl font-bold">
+            {isLoginMode ? "Witaj ponownie!" : "Stwórz konto"}
+          </h2>
+          <p className="text-blue-100 text-sm mt-1">
+            {isLoginMode ? "Zaloguj się, aby zarządzać podróżami" : "Dołącz do planowania wyjazdów"}
+          </p>
+        </div>
+
+        {/* Ciało formularza */}
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+          {/* Wyświetlanie informacji o napotkanym błędzie */}
+          {error && <p className="text-red-500 text-sm text-center font-bold bg-red-50 p-2 rounded-lg">{error}</p>}
+
+          {/* Pole "Imię" wyświetlane warunkowo tylko w trybie rejestracji */}
+          {!isLoginMode && (
+            <div className="space-y-1 text-left">
+              <label className="text-sm font-semibold text-gray-700 ml-1">Imię</label>
+              <input 
+                required
+                type="text" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 text-gray-900"
+              />
+            </div>
+          )}
+
+          {/* Pole adresu e-mail */}
+          <div className="space-y-1 text-left">
+            <label className="text-sm font-semibold text-gray-700 ml-1">Adres e-mail</label>
+            <input 
+              required
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 text-gray-900"
+            />
+          </div>
+
+          {/* Pole hasła */}
+          <div className="space-y-1 text-left">
+            <label className="text-sm font-semibold text-gray-700 ml-1">Hasło</label>
+            <input 
+              required
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 text-gray-900"
+            />
+          </div>
+
+          {/* Przyciski operacyjne */}
+          <div className="pt-2 space-y-3">
+            {/* Przycisk wysłania formularza */}
+            <button 
+              type="submit"
+              disabled={loading}
+              className={`w-full ${isLoginMode ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 rounded-xl shadow-lg transition-all disabled:opacity-50`}
+            >
+              {loading ? "Przetwarzanie..." : isLoginMode ? "Zaloguj się" : "Zarejestruj się"}
+            </button>
+            {/* Przycisk zamknięcia formularza */}
+            <button type="button" onClick={onClose} className="w-full text-gray-400 text-sm hover:text-gray-600">
+              Anuluj
+            </button>
+          </div>
+        </form>
+
+        {/* Dolny panel przełączający tryb logowania/rejestracji */}
+        <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
+          <p className="text-sm text-gray-500">
+            {isLoginMode ? "Nie masz konta?" : "Masz już konto?"} 
+            <button 
+              type="button"
+              onClick={() => setIsLoginMode(!isLoginMode)} 
+              className="text-blue-600 font-bold hover:underline ml-1"
+            >
+              {isLoginMode ? "Zarejestruj się" : "Zaloguj się"}
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+---

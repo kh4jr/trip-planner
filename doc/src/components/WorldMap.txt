@@ -1,0 +1,80 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) odpowiedzialny za graficzną reprezentację (mapę kartograficzną świata) odwiedzonych oraz planowanych kierunków podróży z użyciem biblioteki `react-simple-maps`.
+- **Typ komponentu**: Client Component (komponent kliencki). Do renderowania interaktywnego wykresu wektorowego SVG (mapy) i nasłuchiwania zdarzeń hover/mouse-click niezbędne są interfejsy przeglądarkowe (DOM i SVG).
+- **Definicja Props**:
+  - `visited`: Tablica kodów krajów w standardzie ISO 3166-1 Alpha-2 (np. "PL", "US"), które użytkownik już odwiedził.
+  - `planned`: Tablica kodów państw planowanych do odwiedzenia w przyszłości.
+- **Główna Logika Biznesowa**:
+  - **Pobieranie Geometrii**: Ładuje topologię geograficzną państw w formacie TopoJSON z publicznego serwera CDN (`world-atlas@2/countries-110m.json`).
+  - **Kolorowanie Warunkowe**: Dla każdego wygenerowanego konturu państwa sprawdza, czy jego kod `ISO_A2` znajduje się w tablicy `visited` lub `planned`. Na tej podstawie przypisuje odpowiedni kolor wypełnienia (`fill`).
+  - **Efekty Hover/Active**: Stylizuje kursor myszy oraz płynnie zmienia odcień wypełnienia państwa po najechaniu lub kliknięciu.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+import React from "react";
+// Importy z biblioteki react-simple-maps do tworzenia map wektorowych SVG
+import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+
+// Adres URL do pliku TopoJSON zawierającego geometrię granic państw świata (skala 1:110m)
+const geoUrl =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+// Definicja interfejsu propsów dla mapy świata
+interface WorldMapProps {
+  visited: string[]; // Kody ISO_A2 krajów odwiedzonych
+  planned?: string[]; // Kody ISO_A2 krajów planowanych
+}
+
+export default function WorldMap({
+  visited,
+  planned = [],
+}: WorldMapProps) {
+  return (
+    <div className="w-full h-full min-h-[300px]">
+      {/* Kontener mapy z domyślną konfiguracją skali projekcji */}
+      <ComposableMap projectionConfig={{ scale: 145 }}>
+        {/* Pobranie i sparsowanie geometrii państw */}
+        <Geographies geography={geoUrl}>
+          {({ geographies }) =>
+            geographies.map((geo) => {
+              // Wyodrębnienie dwuliterowego kodu państwa ISO (np. "PL")
+              const code = geo.properties.ISO_A2;
+
+              // Sprawdzenie przynależności państwa do grup podróżniczych
+              const isVisited = visited.includes(code);
+              const isPlanned = planned.includes(code);
+
+              // Dobór koloru wypełnienia w zależności od statusu podróży
+              let fill = "#E2E8F0"; // Domyślny kolor szary dla państw nieoznaczonych
+              if (isVisited) fill = "#2563EB"; // Kolor ciemnoniebieski dla odwiedzonych
+              else if (isPlanned) fill = "#93C5FD"; // Kolor jasnoniebieski dla planowanych
+
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  // Definiowanie stylów SVG dla różnych stanów interakcji
+                  style={{
+                    default: { fill, outline: "none" },
+                    hover: {
+                      fill: isVisited ? "#1D4ED8" : "#CBD5E1",
+                      outline: "none",
+                      cursor: "pointer",
+                    },
+                    pressed: { fill: "#1E40AF", outline: "none" },
+                  }}
+                  className="transition-colors duration-300"
+                />
+              );
+            })
+          }
+        </Geographies>
+      </ComposableMap>
+    </div>
+  );
+}
+```

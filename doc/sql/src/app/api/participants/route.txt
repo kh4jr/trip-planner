@@ -1,0 +1,63 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/participants/route.ts` jest odpowiedzialny za pobieranie rekordów uczestników przypisanych do konkretnego identyfikatora użytkownika (`userId`). Służy do weryfikacji powiązań między zalogowanym użytkownikiem a jego profilem uczestnika w bazie danych.
+
+**Operacje CRUD:**
+- **Select (Read)**: Wyszukiwanie wielu rekordów z tabeli `Participant` spełniających warunek filtra po kolumnie `userId`.
+
+**Interpretacja SQL:**
+Metoda Prisma Client:
+```typescript
+const participants = await db.participant.findMany({
+  where: {
+    userId: Number(userId),
+  },
+});
+```
+Przekłada się na następujące surowe zapytanie SQL w bazie danych PostgreSQL:
+```sql
+SELECT 
+    "id", 
+    "name", 
+    "email", 
+    "role", 
+    "userId" 
+FROM 
+    "Participant" 
+WHERE 
+    "userId" = $1;
+```
+*Wyjaśnienie wykonania zapytania:*
+- Silnik bazy danych wykonuje zapytanie `SELECT` filtrując rekordy po kolumnie `userId`.
+- Ponieważ kolumna `userId` posiada unikalny indeks (`@unique` w definicji modelu Prisma), wyszukiwanie to jest niezwykle optymalne (złożoność O(1) przy użyciu indeksu B-drzewa/Unikalnego). Mimo użycia metody `findMany`, zapytanie zwróci co najwyżej jeden rekord ze względu na ograniczenie unikalności (`UNIQUE constraint`) nałożone na kolumnę `userId`.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+export async function GET(req: Request) {
+  // Odczyt parametrów URL w celu pobrania identyfikatora użytkownika
+  const { searchParams } = new URL(req.url);
+  const userId = searchParams.get("userId");
+
+  // Walidacja obecności parametru userId - zapobiega próbom rzutowania wartości null/undefined
+  if (!userId) return NextResponse.json({ error: "Brak userId" }, { status: 400 });
+
+  // Wywołanie operacji bazodanowej SELECT na tabeli Participant.
+  // Filtrowanie odbywa się po polu userId przekonwertowanym na typ liczbowy (Number).
+  // Relacja typu One-to-One pomiędzy User a Participant: pole userId posiada klucz obcy (Foreign Key)
+  // referencjonujący tabelę User oraz unikalny indeks (Unique Index), co zapewnia
+  // integralność danych na poziomie silnika relacyjnego (zapobiega duplikacji uczestników dla jednego usera).
+  const participants = await db.participant.findMany({
+    where: {
+      userId: Number(userId),
+    },
+  });
+
+  // Zwrócenie pobranych danych w formacie JSON wraz z domyślnym statusem HTTP 200 OK
+  return NextResponse.json(participants);
+}
+```

@@ -1,0 +1,109 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/auth/[...nextauth]/route.ts` stanowi **API Route Endpoint** realizujący dynamiczną obsługę uwierzytelniania w Next.js za pomocą biblioteki NextAuth.js (tzw. Catch-all route). Jego główne zadania to:
+1. **Konfiguracja NextAuth**: Definiuje obiekt `authOptions`, który zawiera ustawienia strategii sesji, dostawców (Providers) logowania, sekretów oraz funkcji zwrotnych (callbacks).
+2. **Rejestracja Dostawcy Poświadczeń (CredentialsProvider)**: Obsługuje logowanie tradycyjne (adres e-mail i hasło). W funkcji `authorize` sprawdza, czy użytkownik istnieje w bazie danych, weryfikuje hasło z użyciem biblioteki `bcrypt` oraz zapewnia, że zalogowany użytkownik ma powiązany rekord w tabeli `Participant` (tworzy go, jeśli jeszcze nie istnieje).
+3. **Modyfikacja sesji i tokenów JWT**: Za pomocą callbacków `jwt` oraz `session` wstrzykuje identyfikator użytkownika (`userId`) do obiektu sesji dostępnej po stronie klienta oraz serwera, co jest kluczowe dla autoryzacji w innych punktach końcowych API.
+4. **Ekspozycja endpointów GET i POST**: Standardowo dla Next.js App Router, funkcja `NextAuth(authOptions)` jest przypisywana do handlera obsługującego zapytania GET (pobieranie stanu sesji, logowanie CSRF itp.) oraz POST (przesyłanie formularza logowania, wylogowanie).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import NextAuth from "next-auth";
+import { AuthOptions, DefaultSession } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { db } from "@/lib/db";
+import bcrypt from "bcrypt";
+
+// Rozszerzenie typów sesji NextAuth, aby zawierały pole 'id' użytkownika
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"];
+  }
+}
+
+// Konfiguracja NextAuth eksportowana do użycia w innych miejscach systemu (np. getServerSession)
+export const authOptions: AuthOptions = {
+  providers: [
+    CredentialsProvider({
+      name: "Credentials",
+      // Definicja pól formularza logowania
+      credentials: {
+        email: { label: "Email", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
+      // Metoda uwierzytelniająca dane logowania użytkownika
+      async authorize(credentials) {
+        // Walidacja czy podano wymagane dane
+        if (!credentials?.email || !credentials?.password) return null;
+
+        // Wyszukanie użytkownika w bazie danych po adresie email za pomocą Prisma
+        const user = await db.user.findUnique({
+          where: { email: credentials.email },
+        });
+
+        // Jeśli użytkownik nie istnieje lub nie posiada hasła, autoryzacja się nie udaje
+        if (!user || !user.password) return null;
+
+        // Porównanie hasła przesłanego w formularzu z hashem zapisanym w bazie
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
+        if (!isPasswordValid) return null;
+
+        // Sprawdzenie, czy użytkownik ma już swój rekord uczestnika (Participant) w bazie danych
+        const participant = await db.participant.findUnique({
+          where: { userId: user.id },
+        });
+
+        // Jeśli uczestnik nie istnieje (np. świeżo zarejestrowany), tworzymy go w bazie
+        if (!participant) {
+          await db.participant.create({
+            data: { userId: user.id },
+          });
+        }
+
+        // Zwrócenie podstawowych danych użytkownika, które zostaną przekazane do tokena JWT
+        return {
+          id: user.id.toString(),
+          email: user.email,
+          name: user.name,
+        };
+      },
+    }),
+  ],
+  callbacks: {
+    // Callback wywoływany podczas tworzenia/aktualizowania tokena JWT
+    async jwt({ token, user }) {
+      if (user) {
+        // Przypisanie ID użytkownika do tokena
+        token.id = user.id;
+      }
+      return token;
+    },
+    // Callback wywoływany przy sprawdzaniu aktywnej sesji
+    async session({ session, token }) {
+      if (session.user) {
+        // Przypisanie ID z tokena do obiektu sesji
+        session.user.id = token.id as string;
+      }
+      return session;
+    },
+  },
+  // Użycie strategii JSON Web Token dla zachowania bezstanowości sesji
+  session: { strategy: "jwt" },
+  // Zdefiniowanie domyślnej strony logowania (przekierowanie na stronę główną "/")
+  pages: { signIn: "/" },
+  // Klucz szyfrujący tokeny pobierany ze zmiennych środowiskowych
+  secret: process.env.NEXTAUTH_SECRET,
+};
+
+// Utworzenie handlera NextAuth na podstawie zdefiniowanej konfiguracji
+const handler = NextAuth(authOptions);
+// Eksport handlera dla metod GET i POST, wymagany przez Next.js App Router
+export { handler as GET, handler as POST };
+```

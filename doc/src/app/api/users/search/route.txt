@@ -1,0 +1,53 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/users/search/route.ts` pełni funkcję dedykowanego **API Route Endpoint** w Next.js. Jego jedynym i uproszczonym celem jest wyszukiwanie użytkowników w bazie danych na podstawie przekazanego w parametrze URL zapytania tekstowego (`q`). W odróżnieniu od ogólnego endpointu `/api/users`, ta trasa:
+1. **Nie wymaga autoryzacji sesji**: Zapytanie jest realizowane publicznie lub niezależnie od tego, czy użytkownik jest zalogowany.
+2. **Pobieranie frazy wyszukiwania**: Pobiera parametr `q`. Zwraca pustą tablicę, jeżeli zapytanie ma mniej niż 2 znaki.
+3. **Przeszukiwanie bazy danych**: Wykorzystuje Prisma do znalezienia użytkowników, których `name` lub `email` zawiera zadaną frazę (wyszukiwanie case-insensitive).
+4. **Zwracanie odpowiedzi z limitem**: Pobiera maksymalnie 10 rekordów (`take: 10`) i zwraca wybrane pola użytkownika (`id`, `name`, `email`) w formacie JSON.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Uproszczone wyszukiwanie użytkowników według nazwy lub adresu e-mail.
+ * Nie sprawdza sesji użytkownika, co pozwala na otwarte zapytania.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Lista znalezionych użytkowników (maksymalnie 10)
+ */
+export async function GET(req: Request) {
+  // Wyodrębnienie parametrów z adresu URL żądania
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q");
+
+  // Walidacja długości frazy zapytania - ignorowanie zbyt krótkich fraz
+  if (!q || q.length < 2) {
+    return NextResponse.json([]);
+  }
+
+  // Wyszukanie w bazie danych użytkowników spełniających kryteria
+  const users = await db.user.findMany({
+    where: {
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },  // Ignorowanie wielkości liter w nazwie
+        { email: { contains: q, mode: "insensitive" } }, // Ignorowanie wielkości liter w e-mailu
+      ],
+    },
+    // Wybór tylko niezbędnych pól w celu minimalizacji transferu sieciowego
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+    take: 10, // Limit wyników wyszukiwania zwiększony do 10 (w porównaniu do 5 w `/api/users`)
+  });
+
+  // Zwrócenie listy użytkowników w formacie JSON
+  return NextResponse.json(users);
+}
+```

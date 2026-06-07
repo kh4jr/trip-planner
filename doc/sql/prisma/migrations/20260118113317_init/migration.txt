@@ -1,0 +1,50 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik migracyjny `migration.sql` odpowiada za fizyczną inicjalizację struktur bazodanowych w PostgreSQL na wczesnym etapie rozwoju aplikacji (migracja początkowa `20260118113317_init`). Jego głównym zadaniem jest definicja schematu (DDL – Data Definition Language) dla podstawowych encji: podróży (`Trip`) oraz uczestników (`Participant`).
+
+Zapis procesów CRUD i operacji bazodanowych:
+- Jako skrypt migracyjny DDL, plik ten nie wykonuje operacji manipulacji danymi (DML) w czasie rzeczywistym (brak INSERT, SELECT, UPDATE, DELETE). Tworzy on jednak niezbędne struktury tabel i indeksów, które umożliwiają późniejsze wykonywanie zapytań CRUD.
+- **Utworzenie tabeli "Trip"**: Tworzy klucz główny typu `TEXT` (UUID lub unikalny ciąg tekstowy) mapowany na indeks `PRIMARY KEY`.
+- **Utworzenie tabeli "Participant"**: Tworzy tabelę uczestników z relacją klucza obcego do podróży (`tripId`).
+- **Ograniczenia referencyjne**: Wprowadza ograniczenie klucza obcego z klauzulą `ON DELETE RESTRICT` oraz `ON UPDATE CASCADE`. Z punktu widzenia integralności danych oznacza to, że nie można usunąć rekordu z tabeli `"Trip"`, dopóki powiązani z nim uczestnicy w tabeli `"Participant"` nie zostaną wcześniej usunięci (restrykcja usunięcia). Z kolei zmiana identyfikatora wycieczki spowoduje automatyczne zaktualizowanie wartości `tripId` w tabeli uczestników.
+
+Interpretacja SQL:
+- Zapytania `CREATE TABLE` inicjalizują fizyczną strukturę w wybranym schemacie bazy PostgreSQL.
+- Instrukcja `ALTER TABLE "Participant" ADD CONSTRAINT "Participant_tripId_fkey"` dodaje fizyczne ograniczenie klucza obcego w silniku bazy danych, dbając o spójność danych na poziomie relacji.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```sql
+-- Tworzenie tabeli "Trip" reprezentującej strukturę wyjazdu turystycznego.
+-- Identyfikator wycieczki "id" jest kluczem głównym typu tekstowego (niepusty).
+CREATE TABLE "Trip" (
+    "id" TEXT NOT NULL,                  -- Unikalny identyfikator wycieczki (wymagany, typu TEXT).
+    "name" TEXT NOT NULL,                -- Nazwa wycieczki (np. "Wakacje w Hiszpanii").
+    "destination" TEXT NOT NULL,         -- Cel podróży.
+    "startDate" TIMESTAMP(3) NOT NULL,   -- Data i czas rozpoczęcia wycieczki z precyzją do milisekund.
+    "endDate" TIMESTAMP(3) NOT NULL,     -- Data i czas zakończenia wycieczki.
+
+    -- Utworzenie indeksu unikalnego klucza głównego na kolumnie "id".
+    CONSTRAINT "Trip_pkey" PRIMARY KEY ("id")
+);
+
+-- Tworzenie tabeli "Participant" przechowującej dane o uczestnikach wyjazdu.
+CREATE TABLE "Participant" (
+    "id" TEXT NOT NULL,                  -- Unikalny identyfikator uczestnika.
+    "name" TEXT NOT NULL,                -- Nazwa wyświetlana uczestnika.
+    "email" TEXT NOT NULL DEFAULT '',    -- Adres e-mail z domyślną wartością jako pusty ciąg tekstowy.
+    "role" TEXT NOT NULL DEFAULT 'member', -- Rola uczestnika (domyślnie 'member').
+    "tripId" TEXT NOT NULL,              -- Klucz obcy wiążący uczestnika z konkretną wycieczką.
+
+    -- Utworzenie indeksu unikalnego klucza głównego na kolumnie "id".
+    CONSTRAINT "Participant_pkey" PRIMARY KEY ("id")
+);
+
+-- Definicja ograniczenia referencyjnego (klucza obcego) w relacji między uczestnikiem a podróżą.
+-- Powiązanie kolumny "tripId" w tabeli "Participant" z kolumną "id" w tabeli "Trip".
+-- Reguła ON DELETE RESTRICT zapobiega usunięciu wycieczki, jeśli posiada ona przypisanych uczestników.
+-- Reguła ON UPDATE CASCADE gwarantuje, że aktualizacja pola "id" w tabeli "Trip" przeniesie się na pole "tripId".
+ALTER TABLE "Participant" ADD CONSTRAINT "Participant_tripId_fkey" 
+    FOREIGN KEY ("tripId") REFERENCES "Trip"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+```

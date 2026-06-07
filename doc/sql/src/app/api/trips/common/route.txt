@@ -1,0 +1,117 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/trips/common/route.ts` służy do pobierania wspólnych wyjazdów (`Trip`) dla zalogowanego użytkownika (`meId`) oraz wybranego znajomego (`friendId`). Filtruje wyjazdy, w których obaj użytkownicy uczestniczą.
+
+**Operacje CRUD:**
+- **Select (Read)**: Pobieranie rekordów z tabeli `Trip` z filtrowaniem warunkowym opartym na istnieniu powiązanych uczestników o określonych identyfikatorach użytkownika (`userId`), posortowanych malejąco według daty rozpoczęcia (`startDate`).
+
+**Interpretacja SQL:**
+Metoda Prisma Client:
+```typescript
+const trips = await db.trip.findMany({
+  where: {
+    participants: {
+      some: { userId: meId },
+    },
+    AND: {
+      participants: {
+        some: { userId: friendId },
+      },
+    },
+  },
+  orderBy: {
+    startDate: "desc",
+  },
+});
+```
+
+Przekłada się na zapytanie SQL w bazie danych PostgreSQL:
+```sql
+SELECT 
+    "t"."id", 
+    "t"."name", 
+    "t"."destination", 
+    "t"."startDate", 
+    "t"."endDate", 
+    "t"."ownerId", 
+    "t"."description", 
+    "t"."location", 
+    "t"."createdAt"
+FROM 
+    "Trip" AS "t"
+WHERE 
+    EXISTS (
+        SELECT 1 
+        FROM "_ParticipantToTrip" AS "pt1"
+        JOIN "Participant" AS "p1" ON "pt1"."A" = "p1"."id"
+        WHERE "pt1"."B" = "t"."id" AND "p1"."userId" = $1
+    )
+    AND EXISTS (
+        SELECT 1 
+        FROM "_ParticipantToTrip" AS "pt2"
+        JOIN "Participant" AS "p2" ON "pt2"."A" = "p2"."id"
+        WHERE "pt2"."B" = "t"."id" AND "p2"."userId" = $2
+    )
+ORDER BY 
+    "t"."startDate" DESC;
+```
+*Wyjaśnienie wykonania zapytania:*
+- Zapytanie filtruje wiersze tabeli `Trip` za pomocą dwóch skorelowanych podzapytań `EXISTS`.
+- Pierwsze podzapytanie `EXISTS` sprawdza, czy istnieje rekord w tabeli złączeniowej `_ParticipantToTrip` powiązany z danym wyjazdem, którego uczestnik (`Participant`) ma przypisany `userId` równy zalogowanemu użytkownikowi (`$1`).
+- Drugie podzapytanie `EXISTS` analogicznie weryfikuje uczestnictwo znajomego o identyfikatorze `userId` równym `$2`.
+- Po przefiltrowaniu, wiersze są sortowane według kolumny `startDate` w porządku malejącym (`DESC`).
+- Wydajność tego zapytania opiera się na indeksach tabeli złączeniowej `_ParticipantToTrip` oraz kluczach obcych i indeksie na kolumnie `userId` w tabeli `Participant`. Sortowanie może wymagać indeksu na kolumnie `startDate` w celu uniknięcia operacji sortowania w pamięci (filesort) przy dużej liczbie rekordów.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+export async function GET(req: Request) {
+  // Pobranie sesji użytkownika wysyłającego zapytanie
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  // Jeżeli użytkownik nie jest zalogowany, zwracana jest pusta tablica
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Odczyt parametru friendId z adresu URL
+  const { searchParams } = new URL(req.url);
+  const friendId = Number(searchParams.get("friendId"));
+
+  // Walidacja obecności identyfikatora znajomego
+  if (!friendId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Pobranie wspólnych wyjazdów z bazy danych.
+  // Zastosowanie operatora logicznego AND oraz warunku "some" na relacji participants.
+  // Warunek "some" przekłada się na egzystencjalne zapytanie SQL (EXISTS) łączące tabelę Trip,
+  // tabelę złączeniową _ParticipantToTrip oraz tabelę Participant.
+  // Wyszukiwane są tylko te wyjazdy, w których jednocześnie uczestniczy użytkownik meId oraz friendId.
+  // Wyniki są sortowane chronologicznie od najnowszych wyjazdów (startDate DESC).
+  const trips = await db.trip.findMany({
+    where: {
+      participants: {
+        some: { userId: meId },
+      },
+      AND: {
+        participants: {
+          some: { userId: friendId },
+        },
+      },
+    },
+    orderBy: {
+      startDate: "desc",
+    },
+  });
+
+  return NextResponse.json(trips);
+}
+```

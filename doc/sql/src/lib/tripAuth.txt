@@ -1,0 +1,76 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `tripAuth.ts` odpowiada za weryfikację uprawnień dostępu użytkowników do konkretnych podróży (moduł autoryzacyjny). Wykorzystuje on zapytania relacyjne bazy danych do sprawdzenia, czy zalogowany użytkownik jest powiązany z daną podróżą jako uczestnik.
+
+Identyfikacja operacji CRUD:
+- **Select (Odczyt)**: Zapytanie weryfikujące `db.trip.findFirst` z filtrem sprawdzającym istnienie przynajmniej jednego powiązanego rekordu uczestnika o zadanym `userId` (warunek `some`).
+
+Interpretacja SQL:
+Metoda `db.trip.findFirst` z zagnieżdżonym warunkiem relacji `participants: { some: { userId } }` odnosi się do niejawnej relacji wiele-do-wielu (Many-to-Many) pomiędzy tabelami `"Trip"` i `"Participant"`. Prisma realizuje to poprzez automatycznie wygenerowaną tabelę łączącą `"_ParticipantToTrip"` (gdzie kolumna `"A"` to id uczestnika, a `"B"` to id podróży). 
+Zapytanie tłumaczy się na SQL w następujący sposób:
+```sql
+SELECT "t"."id" 
+FROM "Trip" AS "t" 
+WHERE "t"."id" = $1 
+  AND EXISTS (
+    SELECT 1 
+    FROM "Participant" AS "p"
+    INNER JOIN "_ParticipantToTrip" AS "j" ON "j"."A" = "p"."id"
+    WHERE "j"."B" = "t"."id" AND "p"."userId" = $2
+  )
+LIMIT 1;
+```
+Działanie tego zapytania opiera się na wydajnym przeszukiwaniu indeksów unikalnych (indeks klucza głównego `"Trip_pkey"` na `t.id` oraz indeksy złożone na tabeli łączącej `_ParticipantToTrip`). Klauzula `EXISTS` przerywa przeszukiwanie w momencie znalezienia pierwszego pasującego rekordu, co minimalizuje narzut I/O bazy danych.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { db } from "@/lib/db";
+
+// Funkcja sprawdzająca, czy użytkownik o danym userId należy do grona uczestników podróży o tripId.
+// Jeśli relacja nie istnieje, rzucany jest błąd autoryzacji "FORBIDDEN".
+export async function requireTripParticipant(
+  tripId: number,
+  userId: number
+) {
+  // Wywołanie zapytania SELECT z filtrowaniem po kluczu głównym podróży oraz podzapytaniem EXISTS 
+  // sprawdzającym tabelę uczestników (Participant) i tabelę łączącą relacji wiele-do-wielu.
+  // Parametr "select: { id: true }" ogranicza zwracane dane wyłącznie do identyfikatora podróży (zmniejszenie szerokości wiersza w odpowiedzi).
+  const trip = await db.trip.findFirst({
+    where: {
+      id: tripId,
+      participants: {
+        some: {
+          userId, // Sprawdzenie unikalnego klucza obcego userId w tabeli Participant.
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  // Brak dopasowania oznacza, że użytkownik nie jest uczestnikiem podróży lub podróż o danym ID nie istnieje.
+  if (!trip) {
+    throw new Error("FORBIDDEN");
+  }
+
+  return true;
+}
+
+// Funkcja sprawdzająca, czy użytkownik posiada uprawnienia właścicielskie (lub uprawnienia uczestnika w bieżącej implementacji) do wycieczki.
+export async function requireTripOwner(
+  tripId: number,
+  userId: number
+) {
+  // Wywołanie pomocniczej funkcji requireTripParticipant w celu weryfikacji członkostwa.
+  // Zapobiega to nieuprawnionemu dostępowi do zasobów wycieczki (np. harmonogramu, notatek, kosztów).
+  const isParticipant = await requireTripParticipant(tripId, userId);
+
+  if (!isParticipant) {
+    throw new Error("FORBIDDEN");
+  }
+  return true;
+}
+```

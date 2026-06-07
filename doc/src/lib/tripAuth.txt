@@ -1,0 +1,84 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/lib/tripAuth.ts` implementuje warstwę bezpieczeństwa i autoryzacji (Authorization Layer) na poziomie bazy danych w aplikacji. Jego zadaniem jest weryfikacja uprawnień użytkownika do interakcji z określoną podróżą przed wykonaniem jakichkolwiek akcji odczytu lub zapisu (Server-side Route/Action protection).
+
+W pliku zaimplementowano dwie główne funkcje zabezpieczające:
+1. **Weryfikacja Uczestnictwa (`requireTripParticipant`)**: Sprawdza, czy zalogowany użytkownik (identyfikowany przez `userId`) jest przypisany jako uczestnik danej podróży (`tripId`). Zabezpiecza to przed sytuacją, w której nieuprawniony zalogowany użytkownik próbuje uzyskać dostęp do szczegółów podróży, wpisując bezpośrednio jej identyfikator w adresie URL lub żądaniu API. Wyszukiwanie odbywa się przy użyciu relacji zagnieżdżonej Prisma (`participants.some`).
+2. **Weryfikacja Własności (`requireTripOwner`)**: W obecnej implementacji funkcja ta działa jako warstwa pomocnicza wywołująca `requireTripParticipant`. Służy do weryfikacji roli nadrzędnej (np. właściciela/organizatora podróży), rzucając wyjątek `FORBIDDEN` w przypadku braku powiązania użytkownika z podróżą.
+
+W przypadku niepowodzenia autoryzacji funkcje te natychmiast rzucają wyjątek (Error), przerywając dalsze wykonywanie operacji na serwerze i uniemożliwiając wyciek danych (Data Leakage Prevention).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kompletny kod modułu autoryzacji z naniesionym profesjonalnym komentarzem w języku polskim:
+
+```typescript
+import { db } from "@/lib/db";
+
+/**
+ * Weryfikuje, czy określony użytkownik jest uczestnikiem danej podróży.
+ * W przypadku braku uprawnień rzuca błąd systemowy.
+ * 
+ * @param tripId Unikalny identyfikator podróży.
+ * @param userId Unikalny identyfikator użytkownika.
+ * @returns Zwraca true w przypadku pomyślnej autoryzacji.
+ * @throws Error z komunikatem "FORBIDDEN", jeśli użytkownik nie ma uprawnień.
+ */
+export async function requireTripParticipant(
+  tripId: number,
+  userId: number
+) {
+  // Odpytanie bazy danych przy użyciu Prisma Client.
+  // Szukamy pierwszej podróży spełniającej kryteria: id podróży oraz obecność userId w relacji uczestników (some).
+  const trip = await db.trip.findFirst({
+    where: {
+      id: tripId,
+      participants: {
+        some: {
+          userId, // Sprawdzenie, czy przynajmniej jeden uczestnik ma powiązane userId równe przekazanemu parametrowi
+        },
+      },
+    },
+    // Optymalizacja zapytania: pobieramy tylko pole id (select id: true), zamiast całego rekordu wraz z relacjami.
+    // Zmniejsza to narzut sieciowy i czas wykonywania zapytania do bazy danych.
+    select: {
+      id: true,
+    },
+  });
+
+  // Jeżeli zapytanie nie zwróciło podróży, oznacza to, że użytkownik nie uczestniczy w danej wycieczce.
+  if (!trip) {
+    throw new Error("FORBIDDEN");
+  }
+
+  // Autoryzacja zakończona sukcesem
+  return true;
+}
+
+/**
+ * Weryfikuje, czy użytkownik jest właścicielem/kuratorem podróży.
+ * Obecnie opiera się na sprawdzeniu statusu uczestnictwa użytkownika.
+ * 
+ * @param tripId Unikalny identyfikator podróży.
+ * @param userId Unikalny identyfikator użytkownika.
+ * @returns Zwraca true w przypadku pomyślnej weryfikacji.
+ * @throws Error z komunikatem "FORBIDDEN", jeśli warunek nie jest spełniony.
+ */
+export async function requireTripOwner(
+  tripId: number,
+  userId: number
+) {
+  // Wywołanie asynchroniczne funkcji sprawdzającej uczestnictwo w podróży.
+  const isParticipant = await requireTripParticipant(tripId, userId);
+
+  // Weryfikacja flagi uczestnictwa. Choć obecna implementacja jest uproszczona,
+  // pozwala ona na łatwe rozbudowanie w przyszłości o sprawdzanie roli właściciela (np. db.trip.findFirst z warunkiem ownerId === userId).
+  if (!isParticipant) {
+    throw new Error("FORBIDDEN");
+  }
+  return true;
+}
+```
+---

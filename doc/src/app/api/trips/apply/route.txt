@@ -1,0 +1,79 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/trips/apply/route.ts` reprezentuje **API Route Endpoint** w Next.js odpowiedzialny za rejestrowanie uczestnictwa zalogowanego użytkownika w wybranej podróży (dołączanie do wyjazdu). 
+Obsługuje wyłącznie zapytania typu **POST**:
+1. **Weryfikacja sesji**: Uwierzytelnia żądanie za pomocą sesji użytkownika. Jeśli sesja lub identyfikator użytkownika nie istnieją, odrzuca zapytanie ze statusem `401 Unauthorized`.
+2. **Dołączanie do podróży**: Odczytuje z ciała żądania `tripId` podróży, do której użytkownik chce dołączyć.
+3. **Upsert Uczestnika (Participant)**: Wykorzystuje operację `upsert` w Prisma w odniesieniu do tabeli `Participant`:
+   - Jeśli użytkownik posiada już powiązany rekord `Participant`, baza danych jest aktualizowana poprzez powiązanie (relacja many-to-many) z wyjazdem o określonym `tripId` (`connect`).
+   - Jeśli użytkownik nie posiada jeszcze rekordu `Participant`, zostaje on utworzony z domyślną rolą `"GUEST"`, nazwą pobraną z sesji (lub domyślną wartością `"Uczestnik"`) i od razu powiązany z danym wyjazdem.
+4. **Zwracanie odpowiedzi**: W przypadku sukcesu zwraca dane uczestnika ze statusem `210 Created` (poprawny zapis). W razie niepowodzenia (np. naruszenie klucza unikalności, gdy użytkownik już dołączył) zwraca błąd o statusie `500`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db"; 
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
+interface ApplyData {
+    role: string;
+    tripId: number;
+    userId: number;
+    name: string;
+}
+
+/**
+ * Endpoint POST - Dołączanie zalogowanego użytkownika do wyjazdu (jako Participant z rolą GUEST).
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Dane uczestnika po operacji upsert lub komunikat o błędzie
+ */
+export async function POST(req: Request) {
+    try {
+        // Pobranie i weryfikacja sesji użytkownika
+        const session = await getServerSession(authOptions);
+        const user = session?.user as { id: string | number } | undefined;
+
+        // Blokada dostępu w przypadku braku zalogowania
+        if (!user?.id) {
+            return NextResponse.json({ error: "Nieautoryzowany" }, { status: 401 });
+        }
+
+        // Odczytanie tripId z przesłanego obiektu JSON
+        const { tripId } = await req.json();
+
+        // Operacja upsert na uczestniku - zapewnia bezpieczeństwo zapisu bez względu na to, czy rekord uczestnika już istnieje
+        const participant = await db.participant.upsert({
+            where: { userId: Number(user.id) },
+            // Jeśli uczestnik już istnieje, dołączamy kolejną podróż do relacji typu N:M (wiele do wielu)
+            update: {
+                trips: {
+                    connect: { id: Number(tripId) }
+                }
+            },
+            // Jeśli to nowo zarejestrowany użytkownik bez profilu uczestnika, tworzymy go
+            create: {
+                role: "GUEST", // Domyślna rola dla dołączających
+                userId: Number(user.id),
+                name: session?.user?.name || "Uczestnik",
+                trips: {
+                    connect: { id: Number(tripId) }
+                }
+            }
+        });
+
+        // Zwrócenie danych uczestnika z kodem 201 Created
+        return NextResponse.json(participant, { status: 201 });
+    } catch (error) {
+        console.error("Apply error:", error);
+        // Obsługa błędów unikalności lub braku połączenia z bazą
+        return NextResponse.json(
+            { error: "Już dołączyłeś lub wystąpił błąd bazy danych" }, 
+            { status: 500 }
+        );
+    }
+}
+```

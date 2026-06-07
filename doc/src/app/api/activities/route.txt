@@ -1,0 +1,138 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/activities/route.ts` pełni rolę **API Route Endpoint** w architekturze Next.js (App Router). Jego głównym zadaniem jest zarządzanie aktywnościami w ramach zaplanowanych wyjazdów (tripów). Obsługuje on trzy metody HTTP:
+1. **GET**: Odpytuje bazę danych w celu pobrania listy aktywności powiązanych z określonym identyfikatorem podróży (`tripId`). Wyniki są sortowane rosnąco według czasu rozpoczęcia wydarzenia.
+2. **POST**: Umożliwia dodanie nowej aktywności. Weryfikuje sesję użytkownika, parsuje przesłane dane, sprawdza (za pomocą `requireTripParticipant`), czy użytkownik jest uczestnikiem danej podróży, a następnie zapisuje nową aktywność w bazie danych. Zapisywany jest również autor wpisu (jako nazwa lub email pobrany z sesji).
+3. **DELETE**: Umożliwia usunięcie wybranej aktywności na podstawie przekazanego w parametrach zapytania identyfikatora (`id`). Weryfikuje tożsamość użytkownika na podstawie sesji przed wykonaniem operacji usunięcia.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { requireTripParticipant } from "@/lib/tripAuth";
+
+/**
+ * Endpoint GET - Pobieranie aktywności przypisanych do danej podróży.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON z listą aktywności lub pustą tablicą
+ */
+export async function GET(req: Request) {
+  // Parsowanie parametrów URL z żądania
+  const { searchParams } = new URL(req.url);
+  const tripId = searchParams.get("tripId");
+  
+  // Jeśli brak tripId w zapytaniu, zwracamy pustą tablicę
+  if (!tripId) return NextResponse.json([]);
+
+  // Pobranie aktywności z bazy danych dla danego tripId z sortowaniem chronologicznym
+  const activities = await db.activity.findMany({
+    where: { tripId: parseInt(tripId) },
+    orderBy: { time: "asc" },
+  });
+
+  // Zwrócenie pobranych aktywności w formacie JSON
+  return NextResponse.json(activities);
+}
+
+/**
+ * Endpoint POST - Dodawanie nowej aktywności do podróży.
+ * Wymagana jest autoryzacja oraz status uczestnika podróży.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON z utworzoną aktywnością lub błędem
+ */
+export async function POST(req: Request) {
+  try {
+    // Pobranie aktualnej sesji użytkownika
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      // Zwrócenie błędu 401 w przypadku braku aktywnej sesji
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    // Parsowanie ciała żądania JSON
+    const body = await req.json();
+    console.log("Próba zapisu aktywności:", body);
+
+    const tripId = parseInt(body.tripId);
+    const userId = Number(session.user.id);
+
+    // Sprawdzenie uprawnień - czy zalogowany użytkownik należy do uczestników podróży
+    await requireTripParticipant(tripId, userId);
+
+    // Utworzenie nowego rekordu aktywności w bazie danych za pomocą Prisma ORM
+    const newActivity = await db.activity.create({
+      data: {
+        name: body.name,
+        // Konwersja czasu na obiekt Date
+        time: new Date(body.time),
+        tripId,
+        // Zapisanie nazwy twórcy na podstawie dostępnych danych z sesji
+        createdByName: session.user.name ?? session.user.email ?? "Użytkownik",
+      },
+    });
+
+    // Zwrócenie nowo utworzonego obiektu z kodem 200 OK
+    return NextResponse.json(newActivity);
+  } catch (error) {
+    // Obsługa braku uprawnień (np. rzucona przez requireTripParticipant)
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Wystąpił nieoczekiwany błąd";
+
+    console.error("BŁĄD PRISMA:", errorMessage);
+
+    // Zwrócenie ogólnego błędu serwera
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}
+
+/**
+ * Endpoint DELETE - Usuwanie istniejącej aktywności.
+ * Weryfikuje uwierzytelnienie użytkownika przed modyfikacją stanu bazy.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON potwierdzająca sukces lub zgłaszająca błąd
+ */
+export async function DELETE(req: Request) {
+  try {
+    // Sprawdzenie sesji użytkownika
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    // Odczytanie parametru "id" aktywności z URL
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      // Błąd 400 jeśli nie przekazano ID aktywności do usunięcia
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Usunięcie rekordu aktywności z bazy danych
+    await db.activity.delete({
+      where: { id: Number(id) },
+    });
+
+    // Zwrócenie potwierdzenia powodzenia operacji
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE ACTIVITY:", error);
+    // Zwrócenie błędu 500 w przypadku niepowodzenia operacji bazodanowej
+    return NextResponse.json(
+      { error: "Nie udało się usunąć aktywności" },
+      { status: 500 }
+    );
+  }
+}
+```

@@ -1,0 +1,87 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/notes/route.ts` reprezentuje **API Route Endpoint** w Next.js, obsługujący operacje na notatkach przypisanych do poszczególnych wyjazdów. Obsługuje on trzy metody HTTP:
+1. **GET**: Pobiera wszystkie notatki skojarzone z wyjazdem o identyfikatorze `tripId` podanym w parametrach zapytania. Notatki są sortowane chronologicznie rosnąco według czasu utworzenia (`createdAt`). W przypadku braku `tripId` zwracany jest błąd `400 Bad Request`.
+2. **PATCH**: Umożliwia aktualizację statusu ukończenia notatki (`isCompleted`). Odczytuje z ciała żądania identyfikator notatki (`id`) oraz jej nowy stan, a następnie aktualizuje dane w bazie za pomocą Prisma i zwraca zaktualizowany obiekt.
+3. **DELETE**: Usuwa wybraną notatkę na podstawie parametru `id` przekazanego w zapytaniu URL, po czym zwraca potwierdzenie powodzenia operacji.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Pobieranie notatek powiązanych z podróżą o danym tripId.
+ * 
+ * @param request Obiekt żądania HTTP
+ * @returns Lista notatek posortowana rosnąco według daty utworzenia
+ */
+export async function GET(request: Request) {
+  try {
+    // Analiza parametrów URL żądania
+    const { searchParams } = new URL(request.url);
+    const tripId = searchParams.get("tripId");
+
+    // Jeśli nie przekazano tripId, zwracany jest błąd 400 Bad Request
+    if (!tripId) {
+      return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+    }
+
+    // Pobranie notatek z bazy danych dla odpowiedniej podróży
+    const notes = await db.note.findMany({
+      where: {
+        tripId: parseInt(tripId),
+      },
+      orderBy: {
+        createdAt: "asc", // Sortowanie od najstarszych do najnowszych
+      },
+    });
+
+    return NextResponse.json(notes);
+  } catch (error) {
+    console.error("Błąd API Notes:", error);
+    // Zwrot błędu 500 w przypadku awarii serwera/bazy danych
+    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+  }
+}
+
+/**
+ * Endpoint PATCH - Zmiana statusu ukończenia/odznaczenia notatki (isCompleted).
+ * 
+ * @param request Obiekt żądania HTTP z ID i nowym statusem w formacie JSON
+ * @returns Zaktualizowany obiekt notatki
+ */
+export async function PATCH(request: Request) {
+  // Pobranie parametrów aktualizacji z ciała zapytania
+  const { id, isCompleted } = await request.json();
+  
+  // Aktualizacja statusu notatki w bazie danych przy użyciu Prisma
+  const updated = await db.note.update({
+    where: { id: Number(id) },
+    data: { isCompleted }
+  });
+  
+  return Response.json(updated);
+}
+
+/**
+ * Endpoint DELETE - Usuwanie wybranej notatki o określonym identyfikatorze.
+ * 
+ * @param request Obiekt żądania HTTP z ID w parametrach URL
+ * @returns Status sukcesu usunięcia
+ */
+export async function DELETE(request: Request) {
+  // Pobranie ID notatki z adresu URL
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  
+  // Usunięcie rekordu notatki z bazy danych
+  await db.note.delete({
+    where: { id: Number(id) }
+  });
+  
+  return Response.json({ success: true });
+}
+```

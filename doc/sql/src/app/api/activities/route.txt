@@ -1,0 +1,204 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/activities/route.ts` obsługuje operacje na aktywnościach przypisanych do wycieczki (model `Activity`). Realizuje pobieranie (GET), tworzenie (POST) oraz usuwanie (DELETE) rekordów w tabeli `Activity`. Zabezpiecza również dostęp do tworzenia aktywności poprzez sprawdzenie uprawnień uczestnictwa w danej wycieczce (`requireTripParticipant`).
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Pobieranie aktywności przypisanych do konkretnej wycieczki w metodzie GET.
+- **Insert (Create)**: Dodawanie nowego wpisu aktywności w metodzie POST po pomyślnej weryfikacji uczestnictwa użytkownika.
+- **Delete (Delete)**: Usuwanie określonej aktywności na podstawie jej identyfikatora w metodzie DELETE.
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Pobieranie aktywności (`db.activity.findMany`)**
+   - Prisma:
+     ```typescript
+     db.activity.findMany({
+       where: { tripId: parseInt(tripId) },
+       orderBy: { time: "asc" },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "name", "time", "tripId", "createdByName"
+     FROM "Activity"
+     WHERE "tripId" = $1
+     ORDER BY "time" ASC;
+     ```
+   - *Wyjaśnienie*: Zapytanie wykonuje operację `SELECT` na tabeli `"Activity"`. Filtruje wyniki na podstawie klucza obcego `"tripId"`. Wyniki są sortowane rosnąco na podstawie kolumny `"time"`. Jeśli na kolumnie `"tripId"` oraz `"time"` istnieją indeksy, baza danych może wykonać to zapytanie szybciej (Index Scan zamiast Sequential Scan).
+
+2. **Weryfikacja uczestnika wycieczki (`requireTripParticipant` wywoływane w POST)**
+   - Prisma:
+     ```typescript
+     db.trip.findFirst({
+       where: { id: tripId, participants: { some: { userId } } },
+       select: { id: true }
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT t.id
+     FROM "Trip" AS t
+     WHERE t.id = $1 AND EXISTS (
+       SELECT 1
+       FROM "Participant" AS p
+       JOIN "_ParticipantToTrip" AS pt ON pt."A" = p.id
+       WHERE pt."B" = t.id AND p."userId" = $2
+     )
+     LIMIT 1;
+     ```
+   - *Wyjaśnienie*: Sprawdza, czy istnieje powiązanie między użytkownikiem o określonym `userId` a wycieczką o określonym `id`. Ponieważ relacja między `Trip` a `Participant` jest relacją wiele-do-wielu (many-to-many), Prisma wykorzystuje niejawną tabelę łączącą `"_ParticipantToTrip"`. Zapytanie pobiera tylko kolumnę `id` i ogranicza wynik do 1 rekordu.
+
+3. **Tworzenie aktywności (`db.activity.create`)**
+   - Prisma:
+     ```typescript
+     db.activity.create({
+       data: {
+         name: body.name,
+         time: new Date(body.time),
+         tripId,
+         createdByName: session.user.name ?? session.user.email ?? "Użytkownik",
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     INSERT INTO "Activity" ("name", "time", "tripId", "createdByName")
+     VALUES ($1, $2, $3, $4)
+     RETURNING "id", "name", "time", "tripId", "createdByName";
+     ```
+   - *Wyjaśnienie*: Wstawia nowy wiersz do tabeli `"Activity"`. Wymagane jest poprawne powiązanie klucza obcego `"tripId"` z istniejącym rekordem w tabeli `"Trip"`. Po wstawieniu rekordu baza danych zwraca nowo wygenerowany identyfikator oraz pozostałe kolumny (klauzula `RETURNING`).
+
+4. **Usuwanie aktywności (`db.activity.delete`)**
+   - Prisma:
+     ```typescript
+     db.activity.delete({
+       where: { id: Number(id) },
+     })
+     ```
+   - SQL:
+     ```sql
+     DELETE FROM "Activity"
+     WHERE "id" = $1
+     RETURNING "id", "name", "time", "tripId", "createdByName";
+     ```
+   - *Wyjaśnienie*: Wykonuje operację `DELETE` na tabeli `"Activity"`. Identyfikuje rekord do usunięcia na podstawie klucza głównego `id` (co gwarantuje szybkie zlokalizowanie rekordu za pomocą indeksu PK). Zwraca usunięty obiekt aktywności.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { requireTripParticipant } from "@/lib/tripAuth";
+
+/**
+ * Metoda GET obsługująca pobieranie listy aktywności dla danej wycieczki.
+ * Wykorzystuje operację SELECT na tabeli "Activity" z filtrowaniem po kluczu obcym "tripId"
+ * oraz sortowaniem po kolumnie "time" typu DateTime.
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const tripId = searchParams.get("tripId");
+  
+  // Walidacja obecności parametru tripId. W przypadku braku zwracana jest pusta tablica.
+  if (!tripId) return NextResponse.json([]);
+
+  // Zapytanie SELECT z klauzulą ORDER BY w celu ułożenia aktywności chronologicznie.
+  // Indeks na "tripId" przyspiesza filtrowanie rekordów powiązanych z tą wycieczką.
+  const activities = await db.activity.findMany({
+    where: { tripId: parseInt(tripId) },
+    orderBy: { time: "asc" },
+  });
+
+  return NextResponse.json(activities);
+}
+
+/**
+ * Metoda POST obsługująca dodawanie nowej aktywności.
+ * Przed zapisem weryfikowana jest autoryzacja sesji oraz uprawnienia uczestnika w wycieczce.
+ * Zapis wiąże się z operacją INSERT bazującą na kluczu obcym do tabeli "Trip".
+ */
+export async function POST(req: Request) {
+  try {
+    // Pobranie i weryfikacja sesji użytkownika.
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    console.log("Próba zapisu aktywności:", body);
+
+    const tripId = parseInt(body.tripId);
+    const userId = Number(session.user.id);
+
+    // Sprawdzenie, czy użytkownik należy do uczestników wycieczki (operacja SELECT z EXISTS).
+    // Zapobiega to nieuprawnionemu modyfikowaniu danych wycieczek przez osoby trzecie.
+    await requireTripParticipant(tripId, userId);
+
+    // Operacja INSERT w bazie danych. Tworzona jest relacja z wycieczką o identyfikatorze tripId.
+    // Jeśli tripId nie istnieje w tabeli "Trip", zostanie wyrzucony błąd naruszenia więzów spójności (Foreign Key Constraint).
+    const newActivity = await db.activity.create({
+      data: {
+        name: body.name,
+        time: new Date(body.time),
+        tripId,
+        createdByName: session.user.name ?? session.user.email ?? "Użytkownik",
+      },
+    });
+
+    return NextResponse.json(newActivity);
+  } catch (error) {
+    // Obsługa błędów autoryzacyjnych i bazodanowych.
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Wystąpił nieoczekiwany błąd";
+
+    console.error("BŁĄD PRISMA:", errorMessage);
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}
+
+/**
+ * Metoda DELETE obsługująca usuwanie istniejącej aktywności.
+ * Wyszukuje rekord na podstawie unikalnego klucza głównego (id) i usuwa go z tabeli "Activity".
+ */
+export async function DELETE(req: Request) {
+  try {
+    // Weryfikacja sesji zalogowanego użytkownika.
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Operacja DELETE z filtrem na unikalny klucz główny (id), co przekłada się na optymalne usuwanie.
+    // Usunięcie rekordu nie wpływa kaskadowo na nadrzędny rekord wycieczki (relacja many-to-one).
+    await db.activity.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE ACTIVITY:", error);
+    return NextResponse.json(
+      { error: "Nie udało się usunąć aktywności" },
+      { status: 500 }
+    );
+  }
+}
+```

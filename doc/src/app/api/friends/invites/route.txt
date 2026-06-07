@@ -1,0 +1,60 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/friends/invites/route.ts` działa jako **API Route Endpoint** w architekturze Next.js, odpowiadając za pobieranie oczekujących zaproszeń do znajomych (friend invites) dla zalogowanego użytkownika. Obsługuje metodę **GET**:
+1. **Pobieranie sesji**: Sprawdza aktualną sesję za pomocą `getServerSession(authOptions)`.
+2. **Autoryzacja użytkownika**: Jeśli użytkownik nie jest zalogowany (brak `userId` w sesji), zwraca pustą listę ze statusem `200 OK`.
+3. **Pobieranie zaproszeń z bazy**: Odpytuje bazę danych przy użyciu Prisma ORM o wszystkie rekordy z tabeli `Friend`, w których kolumna `friendId` odpowiada identyfikatorowi zalogowanego użytkownika, a status relacji wynosi `PENDING` (oczekujące).
+4. **Dołączanie danych o zapraszającym**: W zapytaniu SQL/Prisma stosuje klauzulę `include`, aby dołączyć podstawowe informacje (identyfikator, nazwę i email) o użytkowniku wysyłającym zaproszenie (relacja `user`).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../auth/[...nextauth]/route";
+import { db } from "../../../../lib/db"; 
+import { NextResponse } from "next/server";
+
+/**
+ * Endpoint GET - Pobieranie listy oczekujących zaproszeń do grona znajomych.
+ * 
+ * @returns Odpowiedź JSON z listą zaproszeń (zawierających dane nadawcy) lub pusta lista
+ */
+export async function GET() {
+  // Pobranie danych sesji w celu autoryzacji zapytania
+  const session = await getServerSession(authOptions);
+
+  console.log("SESSION IN INVITES:", session);
+
+  // Bezpieczna konwersja ID użytkownika z sesji na typ liczbowy
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  console.log("USER ID IN INVITES:", userId);
+
+  // Jeśli użytkownik jest niezalogowany, zwracamy pustą listę zamiast rzucania błędu autoryzacji
+  if (!userId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Pobranie z bazy danych rekordów relacji przyjacielskich o statusie oczekującym (PENDING)
+  const invites = await db.friend.findMany({
+    where: {
+      friendId: userId, // Zalogowany użytkownik jest odbiorcą zaproszenia
+      status: "PENDING",
+    },
+    include: {
+      // Dołączenie szczegółowych informacji o osobie zapraszającej (nadawcy)
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  // Zwrócenie listy zaproszeń w formacie JSON
+  return NextResponse.json(invites);
+}
+```

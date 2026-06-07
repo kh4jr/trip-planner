@@ -1,0 +1,108 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) implementujący klasyczny formularz wprowadzania danych o nowej podróży wraz z uproszczonym mechanizmem dodawania uczestników poprzez wpisywanie ich po przecinku w polu tekstowym.
+- **Typ komponentu**: Client Component (komponent kliencki), kontrolujący stan wejściowy formularzy i wysyłający przetworzony obiekt wyjazdu do callbacku `onSave`.
+- **Definicja Props**:
+  - `onSave`: Callback wywoływany po poprawnym zatwierdzeniu formularza, przyjmujący scalony obiekt podróży wraz z listą sparsowanych uczestników.
+  - `onCancel`: Callback anulujący edycję/tworzenie (zamykający formularz).
+- **Główna Logika Biznesowa**:
+  - `handleSubmit`: Zbiera stany pól wejściowych, a następnie przetwarza listę uczestników wpisaną w polu tekstowym. Rozbija ciąg znaków przecinkami (`.split(',')`), usuwa zbędne białe znaki (`.trim()`) i mapuje na obiekty typu `Participant` z generowanymi w locie unikalnymi identyfikatorami.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+import { useState } from 'react';
+import { Trip, Participant } from '@/lib/data';
+
+// Interfejs opisujący typowanie propsów dla formularza podróży
+interface TripFormProps {
+  onSave: (trip: Trip & { participants: Participant[] }) => void;
+  onCancel: () => void;
+}
+
+export default function TripForm({ onSave, onCancel }: TripFormProps) {
+  // Lokalne stany przechowujące wartości pól formularza
+  const [name, setName] = useState('');
+  const [destination, setDestination] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [participants, setParticipants] = useState<string>('');
+
+  /**
+   * Obsługa przesłania formularza. Konwertuje dane tekstowe
+   * na ustrukturyzowany obiekt zgodny z modelami danych.
+   */
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Tworzenie nowego obiektu wyjazdu wraz z powiązanymi uczestnikami
+    const newTrip: Trip & { participants: Participant[] } = {
+      id: Date.now(), // Unikalny identyfikator numeryczny
+      name,
+      destination,
+      startDate,
+      endDate,
+      // Parsowanie ciągu znaków z pola textarea na tablicę obiektów Participant
+      participants: participants.split(',').map((p, index) => ({
+        id: Date.now() + index, // Zapewnienie unikalności identyfikatorów uczestników w pętli
+        name: p.trim(), // Usunięcie zbędnych spacji z początku i końca nazwy
+        email: '',
+        role: 'użytkownik',
+        trips: []
+      }))
+    };
+
+    onSave(newTrip); // Wywołanie callbacku przekazanego przez rodzica
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-4 rounded-lg">
+      <input 
+        className="w-full p-2 border rounded" 
+        placeholder="Nazwa wyjazdu" 
+        value={name} 
+        onChange={e => setName(e.target.value)} 
+        required 
+      />
+      <input 
+        className="w-full p-2 border rounded" 
+        placeholder="Cel podróży" 
+        value={destination} 
+        onChange={e => setDestination(e.target.value)} 
+        required 
+      />
+      
+      <div className="grid grid-cols-2 gap-2">
+        <input 
+          type="date" 
+          className="p-2 border rounded" 
+          value={startDate} 
+          onChange={e => setStartDate(e.target.value)} 
+          required 
+        />
+        <input 
+          type="date" 
+          className="p-2 border rounded" 
+          value={endDate} 
+          onChange={e => setEndDate(e.target.value)} 
+          required 
+        />
+      </div>
+
+      <textarea 
+        className="w-full p-2 border rounded" 
+        placeholder="Uczestnicy (po przecinku)" 
+        value={participants} 
+        onChange={e => setParticipants(e.target.value)} 
+      />
+
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 bg-blue-600 text-white p-2 rounded font-bold">Zapisz</button>
+        <button type="button" onClick={onCancel} className="flex-1 bg-gray-300 p-2 rounded">Anuluj</button>
+      </div>
+    </form>
+  );
+}
+```

@@ -1,0 +1,48 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `db.ts` odpowiada za dostarczenie pojedynczej instancji klienta Prisma (wzorzec projektowy Singleton) dla całej aplikacji w środowisku Next.js. Zapobiega to wielokrotnej re-inicjalizacji klienta Prisma podczas przeładowywania modułów w trybie deweloperskim (Hot Module Replacement - HMR), co mogłoby szybko doprowadzić do wyczerpania dostępnej puli połączeń z bazą danych PostgreSQL.
+
+Zapis procesów CRUD i operacji bazodanowych:
+- Plik nie zawiera bezpośrednich wywołań CRUD (INSERT, SELECT, UPDATE, DELETE). Odpowiada jednak za konfigurację mechanizmu logowania zapytań SQL oraz zarządzanie połączeniami.
+- W trybie deweloperskim włączone jest logowanie `"query"`, co powoduje, że każde wygenerowane przez Prisma ORM zapytanie SQL jest wypisywane w konsoli serwera. Pozwala to na bieżąco monitorować zachowanie bazy i poprawność generowanych indeksów.
+
+Interpretacja SQL:
+- Instancjonowanie klasy `PrismaClient` inicjuje pulę połączeń (Connection Pool) z PostgreSQL. Rozmiar puli połączeń i parametry połączenia pobierane są ze zmiennej środowiskowej `DATABASE_URL` (np. limit połączeń `connection_limit=10`).
+- Włączenie `"query"` w opcji `log` pozwala zobaczyć bezpośredni kod SQL wysyłany do bazy, np. w postaci:
+  ```sql
+  SELECT "id", "email" FROM "User" WHERE "id" = $1;
+  ```
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { PrismaClient } from "@prisma/client";
+
+// Definicja globalnego kontenera dla instancji PrismaClient w celu zapobieżenia 
+// duplikowaniu połączeń podczas deweloperskich przeładowań kodu (HMR w Next.js).
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+// Inicjalizacja instancji PrismaClient. Jeśli w globalnym zakresie globalThis 
+// istnieje już zainicjalizowany klient, zostaje on ponownie użyty.
+// W przeciwnym razie tworzona jest nowa instancja z odpowiednimi poziomami logowania.
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    // Konfiguracja logowania zdarzeń bazodanowych. 
+    // W środowisku deweloperskim ("development") logowane są wszystkie surowe zapytania SQL, błędy oraz ostrzeżenia.
+    // W środowisku produkcyjnym logowane są wyłącznie błędy w celu oszczędności zasobów i bezpieczeństwa.
+    log:
+      process.env.NODE_ENV === "development"
+        ? ["query", "error", "warn"]
+        : ["error"],
+  });
+
+// W środowisku deweloperskim zapisujemy referencję do utworzonego klienta w globalnym obiekcie globalThis.
+// Gwarantuje to, że kolejne żądania modułu w ramach tej samej sesji serwera użyją tego samego połączenia.
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = db;
+}
+```

@@ -1,0 +1,42 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Główny szablon układu (Root Layout Layer) w strukturze Next.js App Router. Jest to komponent kliencki (zadeklarowany za pomocą dyrektywy `'use client'`), którego głównym celem jest zdefiniowanie struktury bazowej dokumentu HTML oraz owinięcie całej aplikacji w dostawców kontekstu (Providers).
+- **Struktura wizualna i renderowanie danych**:
+  - Komponent generuje podstawowe znaczniki `<html>` (z językiem ustawionym na `"pl"` oraz wyłączonym ostrzeżeniem o niezgodności uwodnienia `suppressHydrationWarning` dla poprawnej integracji z systemem motywów) oraz `<body>`.
+  - Wewnątrz ciała dokumentu renderowany jest komponent `<Providers>`, który dostarcza globalne stany sesji oraz motywów dla wszystkich zagnieżdżonych stron reprezentowanych przez właściwość `children`.
+- **Właściwości (Props)**:
+  - `children` (typ `React.ReactNode`): Reprezentuje dynamiczną zawartość podstron aplikacji wstrzykiwaną wewnątrz struktury układu.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+'use client'; // Określa komponent jako Client Component, co umożliwia korzystanie z mechanizmów stanu i cyklu życia po stronie klienta (potrzebne m.in. dla Providers).
+
+import { db } from '@/lib/db'; // Import bazy danych (uwaga: w komponencie klienckim bezpośredni import db może nie być bezpieczny/używany, tutaj pozostał jako nieaktywny import).
+import './globals.css'; // Importowanie globalnych stylów CSS (w tym konfiguracji Tailwind CSS), które definiują wygląd całej aplikacji.
+import Providers from './providers'; // Import niestandardowego komponentu owijającego dostawców kontekstu sesji i motywu.
+
+// Definicja głównego komponentu układu RootLayout, stanowiącego punkt wejścia drzewa DOM aplikacji.
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode; // Typowanie dla elementów potomnych przekazywanych w strukturze routingu Next.js.
+}) {
+  return (
+    // Zdefiniowanie struktury dokumentu HTML z ustawionym językiem polskim.
+    // Atrybut suppressHydrationWarning zapobiega błędom mismatchu podczas renderowania motywu (np. dark/light) na serwerze i kliencie.
+    <html lang="pl" suppressHydrationWarning>
+      {/* Nadanie klas określających minimalną wysokość ciała dokumentu na pełną wysokość ekranu (min-h-screen) oraz pełną szerokość (w-full). */}
+      <body className="min-h-screen w-full">
+        {/* Kontener dostawców kontekstu otaczający całą aplikację, umożliwiający dostęp do autoryzacji i motywów graficznych. */}
+        <Providers> 
+          {children} {/* Dynamicznie renderowana zawartość bieżącej ścieżki (strony). */}
+        </Providers>
+      </body>
+    </html>
+  );
+}
+```
+---

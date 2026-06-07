@@ -1,0 +1,94 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent okna dialogowego potwierdzenia (UI ConfirmModal Component) używany do zabezpieczania nieodwracalnych akcji użytkownika (np. usuwania podróży lub jej elementów). Jest to komponent kliencki (zadeklarowany jako `"use client"`).
+- **Logika biznesowa i zarządzanie stanem**:
+  - Zarządza swoją widocznością poprzez flagę `open`. Jeśli `open` wynosi `false`, komponent zwraca `null` i nie obciąża drzewa DOM.
+  - Obsługuje zamknięcie okna poprzez kliknięcie w tło (overlay) za pomocą zdarzenia `onCancel`.
+  - Reaguje na kliknięcie przycisków akcji wywołując powiązane callbacki: `onConfirm` (dla potwierdzenia akcji) oraz `onCancel` (dla anulowania akcji).
+- **Struktura wizualna i renderowanie danych**:
+  - Półprzezroczyste tło z efektem rozmycia (`bg-black/40 backdrop-blur-sm`).
+  - Karta modalna o zaokrąglonych rogach (`rounded-3xl`) z cieniem.
+  - Wyświetla tytuł, opcjonalny opis oraz przyciski z konfigurowalnymi etykietami (`confirmText` i `cancelText`), z których przycisk zatwierdzenia ma ostrzegawczy, czerwony kolor.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+"use client"; // Komponent kliencki ze względu na bezpośrednią interakcję z użytkownikiem poprzez przyciski i overlay.
+
+// Definicja właściwości wejściowych (Props) dla ConfirmModal.
+type ConfirmModalProps = {
+  open: boolean; // Określa czy okno modalne jest aktualnie otwarte.
+  title: string; // Tytuł wyświetlany na górze okna modalnego.
+  description?: string; // Opcjonalny opis szczegółowy ostrzeżenia.
+  confirmText?: string; // Tekst na przycisku potwierdzenia (domyślnie "Usuń").
+  cancelText?: string; // Tekst na przycisku anulowania (domyślnie "Anuluj").
+  onConfirm: () => void; // Funkcja uruchamiana po kliknięciu przycisku potwierdzenia.
+  onCancel: () => void; // Funkcja uruchamiana po kliknięciu przycisku anulowania lub tła.
+};
+
+// Definicja komponentu ConfirmModal.
+export default function ConfirmModal({
+  open,
+  title,
+  description,
+  confirmText = "Usuń",
+  cancelText = "Anuluj",
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
+  // Warunek wyjścia: jeżeli modal jest zamknięty, nie renderujemy żadnych elementów HTML.
+  if (!open) return null;
+
+  return (
+    // Główny kontener pozycjonowany na stałe w oknie przeglądarki (fixed inset-0).
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Tło (overlay) z efektem rozmycia. Kliknięcie w tło wywołuje anulowanie akcji */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+
+      {/* Kontener samego okna modalnego */}
+      <div className="relative bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-blue-100">
+        {/* Tytuł modalny */}
+        <h3 className="text-xl font-black text-blue-900 mb-2">
+          {title}
+        </h3>
+
+        {/* Renderowanie opisu, jeżeli został przekazany */}
+        {description && (
+          <p className="text-sm text-slate-500 font-bold mb-6">
+            {description}
+          </p>
+        )}
+
+        {/* Sekcja przycisków akcji wyrównana do prawej strony */}
+        <div className="flex justify-end gap-3">
+          {/* Przycisk anulowania */}
+          <button
+            onClick={onCancel}
+            className="px-5 py-2 rounded-xl font-black text-sm
+                       bg-slate-100 text-slate-600
+                       hover:bg-slate-200"
+          >
+            {cancelText}
+          </button>
+
+          {/* Przycisk zatwierdzenia akcji (np. usunięcia) o czerwonym kolorze tła */}
+          <button
+            onClick={onConfirm}
+            className="px-5 py-2 rounded-xl font-black text-sm
+                       bg-red-600 text-white
+                       hover:bg-red-700"
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+---

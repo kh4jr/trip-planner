@@ -1,0 +1,56 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/lib/alert.ts` to lekki moduł pomocniczy (utility module) służący do standaryzacji komunikatów zwrotnych (alertów) w aplikacji. Definiuje on kontrakty typów oraz funkcje fabrykujące (factory functions) dla powiadomień o sukcesie lub błędzie, które mogą być przesyłane pomiędzy akcjami serwera (Server Actions) a komponentami interfejsu użytkownika (UI Components).
+
+Główna rola tego pliku w architekturze to:
+- **Deklaracja Typów**: Definiuje typ `AlertType` reprezentujący status alertu (sukces vs błąd) oraz interfejs `AlertPayload` wymuszający określoną strukturę przesyłanych danych (typ i treść komunikatu).
+- **Abstrakcja Konstrukcji Obiektów**: Funkcje `errorAlert` i `successAlert` upraszczają tworzenie obiektów alertów, redukując redundancję kodu (zasada DRY – Don't Repeat Yourself) oraz zabezpieczając aplikację przed błędami literówek w nazwach typów alertów.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej przedstawiono kompletny kod źródłowy pliku `alert.ts` z wbudowanymi komentarzami o charakterze akademickim:
+
+```typescript
+// Definicja typu unijnego (Union Type) AlertType.
+// Ogranicza ona dopuszczalne wartości statusu alertu wyłącznie do 'success' lub 'error'.
+// Zapobiega to wprowadzaniu niepoprawnych stanów na etapie kompilacji (type safety).
+export type AlertType = "success" | "error";
+
+// Definicja kontraktu danych (Interface) dla ładunku alertu (AlertPayload).
+// Każdy poprawny alert w systemie musi posiadać typ określony przez AlertType oraz tekstową wiadomość.
+export interface AlertPayload {
+  type: AlertType;
+  message: string;
+}
+
+/**
+ * Funkcja pomocnicza generująca ustandaryzowany obiekt błędu.
+ * Używana zazwyczaj w blokach catch do zwracania komunikatów o niepowodzeniu operacji.
+ * 
+ * @param message Treść komunikatu o błędzie.
+ * @returns Obiekt zgodny z interfejsem AlertPayload o typie 'error'.
+ */
+export function errorAlert(message: string): AlertPayload {
+  return {
+    type: "error",
+    message, // Skrócony zapis właściwości obiektu (Object Shorthand Assignment) w ES6
+  };
+}
+
+/**
+ * Funkcja pomocnicza generująca ustandaryzowany obiekt sukcesu.
+ * Używana po pomyślnym zakończeniu operacji zapisu lub edycji danych.
+ * 
+ * @param message Treść komunikatu o sukcesie.
+ * @returns Obiekt zgodny z interfejsem AlertPayload o typie 'success'.
+ */
+export function successAlert(message: string): AlertPayload {
+  return {
+    type: "success",
+    message,
+  };
+}
+```
+---

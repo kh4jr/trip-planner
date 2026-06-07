@@ -1,0 +1,96 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Uniwersalny komponent powiadomień/alertów (UI Alert Component) przeznaczony do wyświetlania komunikatów informacyjnych, błędów lub sukcesów w interfejsie użytkownika. Jest to komponent kliencki (zadeklarowany jako `"use client"`).
+- **Logika biznesowa i zarządzanie stanem**:
+  - Obsługuje automatyczne ukrywanie po upływie zdefiniowanego czasu za pomocą `useEffect`. Czas ten jest konfigurowalny przez właściwość `autoHideMs` (domyślnie 4000 ms).
+  - W momencie odmontowania komponentu lub zmiany jego widoczności, efekt czyści licznik (`clearTimeout`), zapobiegając wyciekom pamięci.
+  - Komponent przyjmuje zestaw właściwości (props), które sterują typem komunikatu (`type`), tytułem (`title`), opcjonalnym opisem szczegółowym (`description`), widocznością (`isVisible`) oraz akcją zamknięcia (`onClose`).
+- **Struktura wizualna i renderowanie danych**:
+  - Wygląd zależy od wybranego typu alertu (`success`, `error`, `info`), który mapuje klasy Tailwind CSS z predefiniowanego słownika `styles`.
+  - Zawiera przycisk z ikoną zamknięcia `X` (z biblioteki `lucide-react`).
+  - Stosuje animacje wejścia (efekt zanikania i wysuwania z góry: `animate-in fade-in slide-in-from-top-2`).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+"use client"; // Komponent kliencki wykorzystujący hooki cyklu życia Reacta (useEffect) oraz interaktywne przyciski.
+
+import { useEffect } from "react";
+import { X } from "lucide-react"; // Import ikony krzyżyka z biblioteki Lucide Icons.
+
+// Definicja dostępnych typów powiadomień.
+type AlertType = "success" | "error" | "info";
+
+// Definicja typowania właściwości wejściowych (Props) dla komponentu Alert.
+type AlertProps = {
+  type?: AlertType; // Opcjonalny typ określający stylizację powiadomienia.
+  title: string; // Tytuł alertu.
+  description?: string; // Opcjonalny, bardziej szczegółowy opis.
+  isVisible: boolean; // Status określający czy alert powinien być renderowany.
+  onClose: () => void; // Funkcja wywoływana przy zamknięciu alertu (manualnym lub automatycznym).
+  autoHideMs?: number; // Czas w milisekundach, po którym alert automatycznie zniknie.
+};
+
+// Słownik mapujący typy alertów na odpowiednie klasy kolorystyczne CSS.
+const styles: Record<AlertType, string> = {
+  success: "bg-green-50 border-green-200 text-green-900",
+  error: "bg-red-50 border-red-200 text-red-900",
+  info: "bg-blue-50 border-blue-200 text-blue-900",
+};
+
+// Definicja komponentu Alert.
+export default function Alert({
+  type = "info", // Domyślny typ to "info".
+  title,
+  description,
+  isVisible,
+  onClose,
+  autoHideMs = 4000, // Domyślny czas wyświetlania to 4 sekundy.
+}: AlertProps) {
+  
+  // Efekt odpowiedzialny za automatyczne ukrywanie alertu.
+  useEffect(() => {
+    if (!isVisible) return; // Jeśli alert nie jest widoczny, nie uruchamiamy timera.
+
+    // Uruchomienie opóźnionego wywołania funkcji zamykającej.
+    const timer = setTimeout(() => {
+      onClose();
+    }, autoHideMs);
+
+    // Czyszczenie timera podczas niszczenia komponentu lub zmiany zależności, co zapobiega wywoływaniu funkcji na nieistniejącym komponencie.
+    return () => clearTimeout(timer);
+  }, [isVisible, autoHideMs, onClose]);
+
+  // Warunkowe renderowanie: jeśli alert ma status niewidocznego, zwracamy null (brak renderowania w drzewie DOM).
+  if (!isVisible) return null;
+
+  return (
+    // Główny kontener alertu z dynamicznie przypisanymi klasami stylów na podstawie parametru `type`.
+    <div
+      className={`mb-4 flex items-start gap-4 rounded-2xl border p-4 shadow-lg transition-all
+        animate-in fade-in slide-in-from-top-2
+        ${styles[type]}`}
+    >
+      <div className="flex-1">
+        <p className="font-black">{title}</p>
+        {/* Renderowanie opcjonalnego opisu, jeśli został przekazany */}
+        {description && (
+          <p className="text-sm opacity-80 mt-1">{description}</p>
+        )}
+      </div>
+
+      {/* Przycisk zamknięcia alertu przez użytkownika */}
+      <button
+        onClick={onClose}
+        className="opacity-60 hover:opacity-100 transition"
+        aria-label="Zamknij"
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+```
+---

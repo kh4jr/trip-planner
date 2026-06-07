@@ -1,0 +1,256 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/trips/route.ts` odpowiada za kluczowe operacje na encjach wyjazdów (`Trip`). Obsługuje pobieranie wszystkich wyjazdów wraz z powiązanymi danymi (organizator, uczestnicy), tworzenie nowych wyjazdów wraz z wiązaniem uczestników oraz usuwanie wyjazdów (wraz z kaskadowym usuwaniem powiązanych aktywności, notatek, wydatków i zadań).
+
+**Operacje CRUD:**
+- **Select (Read)**: Pobieranie listy wyjazdów posortowanych od najnowszych (`createdAt` DESC) wraz z dołączeniem powiązanych profili `User` (owner) oraz `Participant` (wraz z ich profilami `User`).
+- **Select (Read)**: Pobieranie profilu uczestnika dla twórcy wyjazdu oraz innych zaproszonych uczestników na podstawie ich `userId`.
+- **Insert (Create)**: Wstawianie nowego rekordu wyjazdu do tabeli `Trip`.
+- **Insert (Create) w tabeli złączeniowej**: Łączenie wyjazdu z uczestnikami poprzez tabelę złączeniową `_ParticipantToTrip`.
+- **Delete (Delete)**: Usuwanie wyjazdu z tabeli `Trip` na podstawie klucza głównego `id`.
+
+**Interpretacja SQL:**
+1. **Pobieranie wyjazdów (GET):**
+   Metoda Prisma Client:
+   ```typescript
+   const trips = await db.trip.findMany({
+     include: { owner: true, participants: { include: { user: true } } },
+     orderBy: { createdAt: "desc" },
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   -- 1. Pobranie wszystkich wyjazdów posortowanych po dacie utworzenia
+   SELECT "id", "name", "destination", "startDate", "endDate", "ownerId", "description", "location", "createdAt"
+   FROM "Trip"
+   ORDER BY "createdAt" DESC;
+
+   -- 2. Pobranie organizatorów (User) dla pobranych wyjazdów
+   SELECT "id", "email", "name" FROM "User" WHERE "id" IN ($1, $2, ...);
+
+   -- 3. Pobranie uczestników powiązanych z tymi wyjazdami (poprzez tabelę złączeniową)
+   SELECT "p"."id", "p"."name", "p"."email", "p"."role", "p"."userId", "pt"."B" AS "tripId"
+   FROM "Participant" AS "p"
+   JOIN "_ParticipantToTrip" AS "pt" ON "p"."id" = "pt"."A"
+   WHERE "pt"."B" IN ($1, $2, ...);
+
+   -- 4. Pobranie danych użytkowników dla pobranych uczestników
+   SELECT "id", "email", "name" FROM "User" WHERE "id" IN ($1, $2, ...);
+   ```
+
+2. **Tworzenie wyjazdu (POST):**
+   Metoda Prisma Client:
+   ```typescript
+   const trip = await db.trip.create({
+     data: {
+       name: ..., description: ..., startDate: ..., endDate: ..., location: ..., destination: ..., ownerId: userId,
+       participants: {
+         connect: [ { id: ownerParticipant.id }, ... ]
+       }
+     }
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   -- 1. Weryfikacja i pobranie profilu uczestnika dla twórcy
+   SELECT "id" FROM "Participant" WHERE "userId" = $1;
+
+   -- 2. Wyszukanie profili pozostałych uczestników
+   SELECT "id" FROM "Participant" WHERE "userId" IN ($2, $3, ...);
+
+   -- 3. Wstawienie rekordu wyjazdu
+   INSERT INTO "Trip" ("name", "description", "startDate", "endDate", "location", "destination", "ownerId", "createdAt")
+   VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+   RETURNING "id";
+
+   -- 4. Powiązanie uczestników w tabeli złączeniowej Many-to-Many
+   INSERT INTO "_ParticipantToTrip" ("A", "B")
+   VALUES ($8, $new_trip_id), ($9, $new_trip_id)
+   ON CONFLICT DO NOTHING;
+   ```
+
+3. **Usuwanie wyjazdu (DELETE):**
+   Metoda Prisma Client:
+   ```typescript
+   await db.trip.delete({ where: { id: tripId } });
+   ```
+   Translacja na SQL:
+   ```sql
+   DELETE FROM "Trip" WHERE "id" = $1;
+   ```
+   *Wyjaśnienie kaskadowości (Cascade Delete):*
+   Definicja bazy danych PostgreSQL (na bazie schematu Prisma) zawiera klauzule `ON DELETE CASCADE` na kluczach obcych `tripId` w powiązanych tabelach:
+   - `Activity`, `Expense`, `Note`, `TripItem`, `TripImage`.
+   W rezultacie usunięcie jednego wiersza z tabeli `Trip` automatycznie (na poziomie silnika PostgreSQL) usuwa wszystkie powiązane z nim wiersze z wyżej wymienionych tabel oraz wpisy z tabeli złączeniowej `_ParticipantToTrip`, co gwarantuje spójność referencyjną i zapobiega powstawaniu osieroconych rekordów.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+interface CreateTripBody {
+  name?: string;
+  title?: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  location?: string;
+  destination?: string;
+  participantIds?: number[];
+}
+
+// Pobieranie listy wyjazdów z pełną strukturą powiązań (Read)
+export async function GET() {
+  // Pobieramy wyjazdy, dołączając relację owner (User) oraz participants (zagnieżdżona relacja z tabelą User).
+  // Sortowanie po createdAt malejąco optymalizuje wyświetlanie najnowszych planów wycieczek.
+  const trips = await db.trip.findMany({
+    include: {
+      owner: true,
+      participants: {
+        include: {
+          user: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return NextResponse.json(trips);
+}
+
+// Tworzenie nowego wyjazdu (Create)
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id ? Number(session.user.id) : null;
+
+    // Autoryzacja użytkownika przed zapisem do bazy
+    if (!userId) {
+      return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+    }
+
+    const body: CreateTripBody = await req.json();
+    const {
+      name,
+      title,
+      description,
+      startDate,
+      endDate,
+      location,
+      destination,
+      participantIds = [],
+    } = body;
+
+    // Pobranie profilu Participant dla organizatora wyjazdu.
+    // Indeks unikalny na userId zapewnia szybkie wyszukanie typu O(1).
+    const ownerParticipant = await db.participant.findUnique({
+      where: { userId },
+    });
+
+    if (!ownerParticipant) {
+      return NextResponse.json(
+        { error: "Użytkownik nie ma profilu Participant" },
+        { status: 400 }
+      );
+    }
+
+    // Pobranie profili Participant dla zaproszonych uczestników.
+    // Filtrowanie z operatorem IN (userId in [...]) w celu zredukowania liczby zapytań SQL.
+    const otherParticipants = await db.participant.findMany({
+      where: {
+        userId: {
+          in: participantIds.filter((id) => id !== userId),
+        },
+      },
+    });
+
+    // Wstawienie rekordu Trip i złączenie relacji w jednej transakcji Prisma.
+    // Łączenie uczestników (connect) skutkuje automatycznym dodaniem wierszy do tabeli złączeniowej _ParticipantToTrip.
+    const trip = await db.trip.create({
+      data: {
+        name: name || title || "Nowy wyjazd",
+        description: description || "",
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        location: location || "Brak lokalizacji",
+        destination: destination || location || "Brak lokalizacji",
+        ownerId: userId,
+
+        participants: {
+          connect: [
+            { id: ownerParticipant.id },
+            ...otherParticipants.map((p) => ({ id: p.id })),
+          ],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: true,
+          },
+        },
+        owner: true,
+      },
+    });
+
+    return NextResponse.json(trip);
+  } catch (error) {
+    console.error("CREATE TRIP ERROR:", error);
+    return NextResponse.json(
+      { error: "Błąd serwera" },
+      { status: 500 }
+    );
+  }
+}
+
+// Usuwanie wyjazdu (Delete)
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  // Weryfikacja autoryzacji sesji
+  if (!userId) {
+    return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const tripId = Number(searchParams.get("tripId"));
+
+  if (!tripId) {
+    return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+  }
+
+  // Wyszukanie wyjazdu w celu sprawdzenia uprawnień właścicielskich (Owner)
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+  });
+
+  if (!trip) {
+    return NextResponse.json({ error: "Wyjazd nie istnieje" }, { status: 404 });
+  }
+
+  // Integralność biznesowa: tylko właściciel wyjazdu (ownerId) ma prawo go usunąć
+  if (trip.ownerId !== userId) {
+    return NextResponse.json(
+      { error: "Brak uprawnień" },
+      { status: 403 }
+    );
+  }
+
+  // Wywołanie usunięcia rekordu z tabeli Trip.
+  // Dzięki kaskadowości (Cascade Delete) zdefiniowanej w bazie danych PostgreSQL,
+  // usunięcie tego rekordu automatycznie usunie wszystkie powiązane z nim aktywności, notatki,
+  // wydatki, pozycje listy spakowania oraz wpisy w tabeli złączonej uczestników.
+  await db.trip.delete({
+    where: { id: tripId },
+  });
+
+  return NextResponse.json({ success: true });
+}
+```

@@ -1,0 +1,134 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/notes/route.ts` odpowiada za zarządzanie notatkami przypisanymi do wycieczek (model `Note`). Umożliwia pobieranie wszystkich notatek powiązanych z daną wycieczką w kolejności ich utworzenia (GET), aktualizację stanu wykonania notatki (PATCH) oraz usuwanie notatki (DELETE). Operacje te są realizowane bezpośrednio na tabeli `Note`, która posiada relację typu wiele-do-jednego (many-to-one) z tabelą `Trip`.
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Pobieranie wszystkich notatek dla danej wycieczki (`db.note.findMany`).
+- **Update (Update)**: Aktualizacja pola `isCompleted` konkretnej notatki (`db.note.update`).
+- **Delete (Delete)**: Usunięcie rekordu notatki z bazy danych (`db.note.delete`).
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Pobieranie notatek wycieczki (`db.note.findMany`)**
+   - Prisma:
+     ```typescript
+     db.note.findMany({
+       where: { tripId: parseInt(tripId) },
+       orderBy: { createdAt: "asc" },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "content", "author", "isCompleted", "completedBy", "createdAt", "tripId"
+     FROM "Note"
+     WHERE "tripId" = $1
+     ORDER BY "createdAt" ASC;
+     ```
+   - *Wyjaśnienie*: Wykonuje zapytanie SELECT pobierające wszystkie kolumny notatek powiązanych z wycieczką o identyfikatorze `"tripId"`. Wyniki są sortowane rosnąco według kolumny `"createdAt"`. Szybkość wyszukiwania zależy od indeksów na kluczu obcym `"tripId"` oraz kolumnie `"createdAt"`.
+
+2. **Aktualizacja statusu notatki (`db.note.update`)**
+   - Prisma:
+     ```typescript
+     db.note.update({
+       where: { id: Number(id) },
+       data: { isCompleted }
+     })
+     ```
+   - SQL:
+     ```sql
+     UPDATE "Note"
+     SET "isCompleted" = $1
+     WHERE "id" = $2
+     RETURNING "id", "content", "author", "isCompleted", "completedBy", "createdAt", "tripId";
+     ```
+   - *Wyjaśnienie*: Modyfikuje wartość kolumny `"isCompleted"` w wierszu tabeli `"Note"`. Rekord jest wyszukiwany za pomocą klucza głównego `"id"`. Po zaktualizowaniu baza zwraca zmodyfikowany obiekt.
+
+3. **Usuwanie notatki (`db.note.delete`)**
+   - Prisma:
+     ```typescript
+     db.note.delete({
+       where: { id: Number(id) }
+     })
+     ```
+   - SQL:
+     ```sql
+     DELETE FROM "Note"
+     WHERE "id" = $1
+     RETURNING "id", "content", "author", "isCompleted", "completedBy", "createdAt", "tripId";
+     ```
+   - *Wyjaśnienie*: Usuwa wiersz z tabeli `"Note"` na podstawie jego klucza głównego `"id"`, co jest realizowane przez szybki Index Scan na indeksie PK.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Metoda GET pobierająca listę notatek dla danej wycieczki.
+ * Zwraca rekordy z tabeli "Note" posortowane chronologicznie.
+ */
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tripId = searchParams.get("tripId");
+
+    // Walidacja obecności tripId. Brak uniemożliwia poprawne wykonanie filtrowania.
+    if (!tripId) {
+      return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+    }
+
+    // Operacja SELECT wyszukująca notatki. 
+    // Klauzula orderBy "createdAt": "asc" zapewnia kolejność chronologiczną.
+    // Kolumna "tripId" stanowi klucz obcy powiązany z tabelą "Trip".
+    const notes = await db.note.findMany({
+      where: {
+        tripId: parseInt(tripId),
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    return NextResponse.json(notes);
+  } catch (error) {
+    console.error("Błąd API Notes:", error);
+    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+  }
+}
+
+/**
+ * Metoda PATCH aktualizująca pole statusu wykonania notatki (isCompleted).
+ * Realizuje operację UPDATE na tabeli "Note" po kluczu głównym.
+ */
+export async function PATCH(request: Request) {
+  const { id, isCompleted } = await request.json();
+
+  // Aktualizacja rekordu. Indeks klucza głównego gwarantuje natychmiastowe namierzenie wiersza (Index Scan).
+  // Modyfikacji ulega tylko kolumna "isCompleted", pozostałe wartości pozostają bez zmian.
+  const updated = await db.note.update({
+    where: { id: Number(id) },
+    data: { isCompleted }
+  });
+  return Response.json(updated);
+}
+
+/**
+ * Metoda DELETE usuwająca notatkę o określonym identyfikatorze id.
+ * Realizuje operację DELETE na tabeli "Note".
+ */
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+
+  // Usunięcie rekordu. Ponieważ "id" to klucz główny tabeli "Note", operacja usuwania
+  // nie powoduje potrzeby pełnego przeszukiwania tabeli (Sequential Scan).
+  await db.note.delete({
+    where: { id: Number(id) }
+  });
+  return Response.json({ success: true });
+}
+```

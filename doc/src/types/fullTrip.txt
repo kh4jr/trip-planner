@@ -1,0 +1,72 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/types/fullTrip.ts` jest modułem deklaracji typów zaawansowanych (Advanced Types Definitions) w TypeScript, reprezentującym pełną strukturę agregatu danych podróży w aplikacji (Domain Aggregate). 
+
+Podczas korzystania z Prisma ORM, domyślnie generowany typ `Trip` zawiera tylko płaskie pola z tabeli bazodanowej (np. `id`, `name`, `startDate`, `ownerId`). W architekturze aplikacji Next.js szczegóły podróży są jednak pobierane wraz z powiązanymi relacjami (Eager Loading / Join queries). Z tego względu plik ten definiuje typ `FullTrip`, który rozszerza bazowy typ `Trip` o zagnieżdżone powiązania:
+- **Uczestnicy (`participants`)**: Tablica zawierająca informacje o roli oraz powiązanym obiekcie użytkownika (User).
+- **Wydatki (`expenses`)**: Tablica obiektów `Expense` powiązanych z podróżą.
+- **Zadania (`items`)**: Tablica zadań checklisty podróży.
+- **Aktywności (`activities`)**: Lista zaplanowanych wydarzeń o typie `Activity`.
+- **Notatki (`notes`)**: Lista notatek tekstowych przypisanych do podróży.
+- **Obrazy (`images`)**: Lista powiązanych grafik lub zdjęć z podróży (`TripImage`).
+
+Dzięki temu typowi deweloper ma pewność, że po pobraniu danych z bazy przy użyciu zapytania z klauzulą `include`, obiekt będzie miał precyzyjnie otypowane wszystkie zagnieżdżone właściwości w komponentach React.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kompletny kod pliku typów z naniesionym profesjonalnym, akademickim komentarzem strukturalnym w języku polskim:
+
+```typescript
+// Import typów bazodanowych wygenerowanych automatycznie przez Prisma na podstawie pliku schema.prisma.
+// Wykorzystanie gotowych typów ORM zapewnia 100% zgodności ze strukturą tabel w bazie SQL.
+import {
+  Trip,
+  Expense,
+  TripItem,
+  Note,
+  TripImage,
+} from "@prisma/client";
+
+// Definicja typu pomocniczego Activity.
+// Reprezentuje on aktywność w planie podróży, posiadającą unikalne ID, nazwę, czas (jako obiekt Date) oraz klucz obcy tripId.
+export type Activity = {
+  id: number;
+  name: string;
+  time: Date;
+  tripId: number;
+};
+
+// Definicja typu FullTrip reprezentującego pełną strukturę danych podróży wraz ze wszystkimi relacjami.
+// Wykorzystano operator przecięcia typów (&) w celu rozszerzenia typu bazowego Trip o dodatkowe pola relacyjne.
+export type FullTrip = Trip & {
+  // Rozszerzenie o tablicę uczestników, gdzie każdy uczestnik zawiera szczegóły o roli
+  // oraz zagnieżdżony obiekt użytkownika (user) z jego własnymi unikalnymi polami.
+  participants: {
+    id: number;
+    role: string;
+    user: {
+      id: number;
+      name: string | null; // Pole nazwy może być puste (null) w bazie danych
+      email: string;
+    };
+  }[];
+
+  // Powiązanie z modelem Expense (relacja jeden-do-wielu).
+  expenses: Expense[];
+
+  // Powiązanie z modelem TripItem reprezentującym listę rzeczy do zrobienia/spakowania.
+  items: TripItem[];
+
+  // Lista powiązanych aktywności zdefiniowanych za pomocą lokalnego typu Activity.
+  activities: Activity[];
+
+  // Notatki powiązane z podróżą.
+  notes: Note[];
+
+  // Galeria obrazów/zdjęć przypisanych do danej podróży.
+  images: TripImage[];
+};
+```
+---

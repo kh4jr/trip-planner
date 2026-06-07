@@ -1,0 +1,128 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/trips/apply/route.ts` obsługuje proces aplikowania/dołączania zalogowanego użytkownika do określonej wycieczki (`Trip`). Tworzy lub aktualizuje profil `Participant` przypisany do konta użytkownika i kojarzy go z wybranym wyjazdem.
+
+**Operacje CRUD:**
+- **Select (Read)**: Weryfikacja, czy dla podanego `userId` istnieje już rekord w tabeli `Participant`.
+- **Insert (Create)** lub **Update (Update)**: Operacja typu Upsert. Jeśli uczestnik istnieje, następuje aktualizacja jego powiązań (połączenie z nową wycieczką). Jeśli nie istnieje, następuje wstawienie nowego rekordu w tabeli `Participant` i powiązanie go z wycieczką.
+- **Insert (Create) w tabeli złączeniowej**: Dodanie rekordu łączącego uczestnika z wyjazdem w niejawnej tabeli złączeniowej relacji wiele-do-wielu (Many-to-Many).
+
+**Interpretacja SQL:**
+Operacja Prisma Client:
+```typescript
+const participant = await db.participant.upsert({
+    where: { userId: Number(user.id) },
+    update: {
+        trips: {
+            connect: { id: Number(tripId) }
+        }
+    },
+    create: {
+        role: "GUEST",
+        userId: Number(user.id),
+        name: session?.user?.name || "Uczestnik",
+        trips: {
+            connect: { id: Number(tripId) }
+        }
+    }
+});
+```
+
+Przekłada się na sekwencję zapytań SQL wykonywanych zazwyczaj wewnątrz transakcji bazodanowej:
+1. **Wyszukanie istniejącego uczestnika (Select):**
+   ```sql
+   SELECT "id", "name", "email", "role", "userId" 
+   FROM "Participant" 
+   WHERE "userId" = $1;
+   ```
+
+2. **Scenariusz A: Rekord istnieje (Update):**
+   Prisma nie musi aktualizować żadnych pól w tabeli `Participant`, ponieważ blok `update` zawiera wyłącznie operację `connect` na relacji. Prisma wykonuje wstawienie powiązania do niejawnej tabeli złączeniowej relacji Many-to-Many o nazwie `_ParticipantToTrip`:
+   ```sql
+   INSERT INTO "_ParticipantToTrip" ("A", "B")
+   VALUES ($1, $2)
+   ON CONFLICT DO NOTHING;
+   ```
+   *Uwaga:* `"A"` reprezentuje identyfikator `Participant` (`id`), a `"B"` reprezentuje identyfikator wyjazdu `Trip` (`id`), zgodnie z alfabetycznym mapowaniem modeli przez Prisma.
+
+3. **Scenariusz B: Rekord nie istnieje (Insert):**
+   Wstawienie nowego uczestnika do tabeli `Participant`:
+   ```sql
+   INSERT INTO "Participant" ("role", "userId", "name", "email")
+   VALUES ($1, $2, $3, $4)
+   RETURNING "id";
+   ```
+   Następnie, używając zwróconego `id` nowego uczestnika, Prisma tworzy powiązanie w tabeli złączeniowej:
+   ```sql
+   INSERT INTO "_ParticipantToTrip" ("A", "B")
+   VALUES ($1, $2);
+   ```
+
+*Wyjaśnienie wykonania zapytania:*
+- Operacja `upsert` chroni przed wyścigami danych (race conditions). Sprawdzenie i zapis odbywają się z zachowaniem integralności bazy danych.
+- Relacja Many-to-Many między tabelami `Participant` i `Trip` jest fizycznie realizowana przez osobną tabelę złączeniową `_ParticipantToTrip`. Tabela ta ma klucz główny złożony z kolumn `(A, B)` oraz indeksy na poszczególne kolumny, co umożliwia szybkie odpytywanie o wyjazdy uczestnika oraz uczestników wyjazdu.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db"; 
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
+interface ApplyData {
+    role: string;
+    tripId: number;
+    userId: number;
+    name: string;
+}
+
+export async function POST(req: Request) {
+    try {
+        // Pobranie aktualnej sesji zalogowanego użytkownika w celach autoryzacyjnych
+        const session = await getServerSession(authOptions);
+        const user = session?.user as { id: string | number } | undefined;
+
+        // Blokada dostępu dla użytkowników niezalogowanych
+        if (!user?.id) {
+            return NextResponse.json({ error: "Nieautoryzowany" }, { status: 401 });
+        }
+
+        // Odczyt identyfikatora wyjazdu (tripId), do którego użytkownik chce dołączyć
+        const { tripId } = await req.json();
+
+        // Operacja bazodanowa Upsert na tabeli Participant.
+        // Unikalny indeks na kolumnie userId pozwala zidentyfikować, czy dany User posiada już powiązany profil Participant.
+        // Jeżeli tak: dodawane jest powiązanie wyjazdu w tabeli złączeniowej _ParticipantToTrip za pomocą Connect.
+        // Jeżeli nie: tworzony jest nowy Participant o domyślnej roli "GUEST", przypisywany do userId,
+        // a następnie tworzone jest powiązanie z wyjazdem w tabeli złączeniowej.
+        // Operacja ta chroni integralność bazy danych przed duplikowaniem wpisów uczestnika dla jednego użytkownika.
+        const participant = await db.participant.upsert({
+            where: { userId: Number(user.id) },
+            update: {
+                trips: {
+                    connect: { id: Number(tripId) }
+                }
+            },
+            create: {
+                role: "GUEST",
+                userId: Number(user.id),
+                name: session?.user?.name || "Uczestnik",
+                trips: {
+                    connect: { id: Number(tripId) }
+                }
+            }
+        });
+
+        // Zwrócenie nowo utworzonego lub zmodyfikowanego rekordu ze statusem 201 Created
+        return NextResponse.json(participant, { status: 201 });
+    } catch (error) {
+        console.error("Apply error:", error);
+        return NextResponse.json(
+            { error: "Już dołączyłeś lub wystąpił błąd bazy danych" }, 
+            { status: 500 }
+        );
+    }
+}
+```

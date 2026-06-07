@@ -1,0 +1,102 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/expenses/route.ts` pełni funkcję **API Route Endpoint** w architekturze Next.js, zajmując się operacjami CRUD dla wydatków (Expenses) powiązanych z podróżami. Obsługuje następujące metody HTTP:
+1. **GET**: Odczytuje identyfikator podróży (`tripId`) z parametrów URL zapytania. Zwraca listę wszystkich wydatków przypisanych do tego `tripId`. Jeśli nie podano parametru, zwraca pustą tablicę.
+2. **POST**: Tworzy nowy wydatek. Parsuje ciało zapytania, wyodrębniając opis (`description`), kwotę (`amount`), osobę płacącą (`paidBy`), kategorię (`category`) oraz identyfikator podróży (`tripId`). Kwota konwertowana jest na liczbę zmiennoprzecinkową za pomocą `parseFloat`.
+3. **DELETE**: Usuwa wydatek o podanym identyfikatorze `id` przekazanym w parametrach URL zapytania. Jeśli brak parametru `id`, zwraca błąd o kodzie `400 Bad Request`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Pobieranie wydatków przypisanych do konkretnej podróży.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON zawierająca listę wydatków
+ */
+export async function GET(req: Request) {
+  // Pobranie parametrów zapytania URL
+  const { searchParams } = new URL(req.url);
+  const tripId = searchParams.get("tripId");
+  
+  // Jeśli nie podano tripId, zwracamy pustą tablicę (brak błędu, by ułatwić integrację frontendową)
+  if (!tripId) return NextResponse.json([]);
+
+  // Pobranie z bazy danych wydatków dla danego tripId
+  const expenses = await db.expense.findMany({
+    where: { tripId: parseInt(tripId) },
+  });
+
+  // Zwrócenie listy wydatków jako odpowiedź JSON
+  return NextResponse.json(expenses);
+}
+
+/**
+ * Endpoint POST - Dodawanie nowego wydatku do danej podróży.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON z nowo utworzonym obiektem wydatku lub błędem
+ */
+export async function POST(req: Request) {
+  try {
+    // Odczytanie ciała żądania w formacie JSON
+    const body = await req.json();
+
+    // Wykorzystanie Prisma do dodania nowego rekordu wydatku
+    const newExpense = await db.expense.create({
+      data: {
+        description: body.description,
+        amount: parseFloat(body.amount), // Konwersja kwoty na typ zmiennoprzecinkowy (Float)
+        paidBy: body.paidBy,
+        category: body.category || "other", // Nadanie domyślnej kategorii w przypadku jej braku
+        tripId: parseInt(body.tripId),      // Konwersja ID podróży na typ całkowity
+      },
+    });
+
+    // Zwrócenie utworzonego obiektu wydatku
+    return NextResponse.json(newExpense);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Błąd zapisu wydatku";
+    // Zwrócenie błędu 500 z komunikatem o problemie z zapisem
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+/**
+ * Endpoint DELETE - Usuwanie wybranego wydatku.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Odpowiedź JSON z informacją o powodzeniu operacji lub kodem błędu
+ */
+export async function DELETE(req: Request) {
+  try {
+    // Pobranie parametrów zapytania URL
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    // Jeśli brak wymaganego parametru ID, zwracamy błąd 400
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Wywołanie operacji usuwania rekordu w bazie danych na podstawie ID wydatku
+    await db.expense.delete({
+      where: { id: Number(id) },
+    });
+
+    // Zwrócenie sukcesu operacji usunięcia
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE EXPENSE:", error);
+    // Zwrócenie błędu 500 w przypadku awarii systemu bazodanowego
+    return NextResponse.json(
+      { error: "Nie udało się usunąć wydatku" },
+      { status: 500 }
+    );
+  }
+}
+```

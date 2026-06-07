@@ -1,0 +1,137 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Główna strona aplikacji (Page Component) pod adresem głównym `/`. Jest to komponent serwerowy (Server Component), który pobiera dane z bazy danych PostgreSQL przy użyciu ORM Prisma bezpośrednio podczas renderowania po stronie serwera.
+- **Logika biznesowa i zarządzanie danymi**:
+  - Konfiguracja `export const dynamic = "force-dynamic"` wymusza dynamiczne renderowanie strony przy każdym żądaniu, co jest kluczowe ze względu na dynamicznie zmieniające się dane wyjazdów i stan sesji użytkownika.
+  - Komponent pobiera aktualną sesję użytkownika z biblioteki NextAuth (`getServerSession`) w celu identyfikacji zalogowanej osoby.
+  - Pobiera z bazy danych pełną listę wyjazdów (`trip.findMany`) wraz z relacjami: uczestnicy (`participants`), wydatki (`expenses`), notatki (`notes`), aktywności (`activities`), przedmioty do zabrania (`items`), powiązane zdjęcia (`images`) oraz dane właściciela (`owner`).
+  - Pobiera listę wszystkich dostępnych uczestników (`participant.findMany`) posortowanych alfabetycznie według nazwy użytkownika.
+  - Mapuje surowe dane z bazy danych na ustrukturyzowany interfejs `FullTrip`, obsługując przypadki uczestników bez powiązanego konta użytkownika (generując dla nich wirtualne identyfikatory ujemne na podstawie id rekordu uczestnika).
+- **Struktura wizualna i renderowanie danych**:
+  - Renderuje układ z komponentem `<TripManager>`, przekazując pobrane i zmapowane dane jako właściwości (props: `initialTrips`, `session`, `allAvailablePeople`). Dalsza interakcja ze stanem odbywa się wewnątrz komponentu klienckiego `TripManager`.
+  - Zawiera minimalistyczną sekcję stopki aplikacji (`footer`) o spójnej typografii.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+import { db } from "@/lib/db"; // Import instancji klienta Prisma do komunikacji z bazą danych.
+import TripManager from "@/components/TripManager"; // Import klienckiego komponentu zarządzającego interfejsem podróży.
+import { getServerSession } from "next-auth"; // Funkcja NextAuth służąca do pobierania danych sesji po stronie serwera.
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Import opcji konfiguracyjnych mechanizmu uwierzytelniania.
+import { FullTrip } from "@/types/fullTrip"; // Import definicji typu reprezentującego pełny model danych wyjazdu.
+
+export const dynamic = "force-dynamic"; // Instrukcja dla Next.js nakazująca pominięcie statycznego generowania strony i dynamiczne serwowanie przy każdym zapytaniu.
+
+// Definicja asynchronicznego komponentu strony głównej Home.
+export default async function Home() {
+  // Pobranie danych o zalogowanym użytkowniku z sesji serwerowej.
+  const session = await getServerSession(authOptions);
+
+  const rawUserId = session?.user?.id;
+  const userId = rawUserId ? Number(rawUserId) : null; // Rzutowanie identyfikatora użytkownika z sesji na typ liczbowy.
+
+  // Pobranie wszystkich podróży z bazy danych wraz z powiązanymi modelami relacyjnymi.
+  const allTripsData = await db.trip.findMany({
+    include: {
+      participants: {
+        include: {
+          user: true, // Dołączenie danych użytkowników przypisanych do uczestników.
+        },
+      },
+      expenses: true, // Dołączenie listy wydatków związanych z podróżą.
+      notes: true, // Dołączenie notatek przypisanych do podróży.
+      activities: true, // Dołączenie harmonogramu aktywności.
+      items: true, // Dołączenie listy ekwipunku.
+      images: true, // Dołączenie powiązanych linków do zdjęć.
+      owner: true, // Dołączenie danych twórcy/właściciela podróży.
+    },
+    orderBy: {
+      startDate: "asc", // Sortowanie chronologiczne od najbliższego wyjazdu.
+    },
+  });
+
+  // Pobranie listy wszystkich zarejestrowanych osób (uczestników) w celu umożliwienia ich dodawania do nowych wyjazdów.
+  const allAvailableParticipants = await db.participant.findMany({
+    include: {
+      user: true,
+    },
+    orderBy: {
+      user: {
+        name: "asc", // Alfabetyczne sortowanie po nazwie użytkownika.
+      },
+    },
+  });
+
+  // Transformacja danych bazy danych Prisma na interfejs FullTrip wymagany przez komponenty klienckie.
+  const tripsFromDb: FullTrip[] = allTripsData.map((trip) => ({
+    id: trip.id,
+    name: trip.name,
+    description: trip.description,
+    location: trip.location,
+    destination: trip.destination,
+    startDate: new Date(trip.startDate), // Konwersja daty na obiekt Date.
+    endDate: new Date(trip.endDate),
+    ownerId: trip.ownerId,
+    createdAt: trip.createdAt,
+    participants: (trip.participants ?? []).map((p) => ({
+      id: p.id,
+      role: p.role,
+      // Obsługa sytuacji, gdy uczestnik nie posiada jeszcze zarejestrowanego konta użytkownika w aplikacji.
+      user: p.user ? {
+        id: p.user.id,
+        name: p.user.name,
+        email: p.user.email,
+      } : {
+        id: -p.id, // Przypisanie unikalnego ujemnego ID zapobiegającego konfliktom kluczy w React.
+        name: p.name,
+        email: p.email,
+      }
+    })),
+    expenses: trip.expenses ?? [],
+    items: trip.items ?? [],
+    activities: trip.activities ?? [],
+    notes: trip.notes ?? [],
+    images: trip.images ?? [],
+    todos: [], // Inicjalizacja pustej listy zadań (jeśli wymagane strukturalnie).
+  }));
+
+  // Mapowanie wszystkich dostępnych uczestników na ujednolicony format danych osobowych.
+  const allAvailableParticipantsMapped = allAvailableParticipants.map((p) => ({
+    id: p.id,
+    role: p.role,
+    user: p.user ? {
+      id: p.user.id,
+      name: p.user.name,
+      email: p.user.email,
+    } : {
+      id: -p.id,
+      name: p.name,
+      email: p.email,
+    }
+  }));
+
+  return (
+    // Główny kontener strony o elastycznym układzie pionowym (flex-col).
+    <main className="min-h-screen flex flex-col bg-white">
+      <div className="w-full !px-6 lg:!px-8 npxpy-4">
+        {/* Renderowanie TripManager z wstrzykniętymi danymi początkowymi pobranymi na serwerze (SSR). */}
+        <TripManager
+          initialTrips={tripsFromDb}
+          session={session}
+          allAvailablePeople={allAvailableParticipantsMapped}
+        />
+      </div>
+
+      {/* Stopka strony z informacją o prawach autorskich */}
+      <footer className="p-10 mt-auto">
+        <p className="text-blue-500 text-xs font-black uppercase tracking-widest">
+          Trip Planner Pro • 2026
+        </p>
+      </footer>
+    </main>
+  );
+}
+```
+---

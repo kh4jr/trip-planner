@@ -1,0 +1,129 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Skrypt `prisma/seed-check.js` jest narzędziem narzędziowym (utility script) uruchamianym w procesie wdrażania lub inicjalizacji aplikacji. Jego głównym celem jest sprawdzenie stanu bazy danych pod kątem obecności podstawowych użytkowników administracyjnych/testowych oraz ich automatyczne utworzenie (tzw. seeding), jeśli baza danych jest pusta lub nie zawiera wymaganych kont.
+
+Główne mechanizmy logiczne i biznesowe zaimplementowane w pliku to:
+1. **Ręczne Parsowanie Pliku `.env`**: Z uwagi na uruchamianie skryptu bezpośrednio przez Node.js (często poza standardowym cyklem życia Next.js), skrypt samodzielnie odczytuje i parsuje plik `.env`. Umożliwia to poprawne przekazanie zmiennej `DATABASE_URL` do Prisma Client bez konieczności instalowania zewnętrznych runnerów.
+2. **Kompilacja i Warunkowy Import Bibliotek Haszujących**: Skrypt wykazuje wysoką odporność na różnice w środowiskach uruchomieniowych (np. system operacyjny, brak kompilatora C++ dla natywnego `bcrypt`). Próbuje zaimportować natywną bibliotekę `bcrypt`, a w razie błędu przełącza się na jej czysto JavaScriptową implementację `bcryptjs`.
+3. **Deserializacja Danych Wejściowych (`user.json`)**: Dane użytkowników pobierane są z zewnętrznego pliku JSON, co separuje konfigurację od kodu wykonywalnego.
+4. **Idempotentne Zasilanie Bazy (Idempotent Seeding)**: Przed wstawieniem nowego użytkownika, skrypt sprawdza za pomocą zapytania unikalnego (`findUnique`), czy dany adres e-mail już istnieje w bazie. Zapobiega to powstawaniu duplikatów i błędom naruszenia więzów unikalności (unique constraints).
+5. **Haszowanie Haseł (Cryptographic Hashing)**: Wprowadzanie nowych kont odbywa się z zachowaniem standardów bezpieczeństwa – hasła są haszowane algorytmem bcrypt z kosztem (salt rounds) równym 10.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się pełny kod skryptu z interaktywnym, akademickim komentarzem wyjaśniającym detale implementacyjne w języku polskim:
+
+```javascript
+const fs = require('fs');
+const path = require('path');
+
+// 1. Ręczne parsowanie pliku .env w celu zasilenia obiektu process.env
+// Jest to konieczne, aby Prisma Client znała adres bazy danych przed inicjalizacją.
+const envPath = path.join(__dirname, '../.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  // Podział pliku na linie w celu ich sekwencyjnego przetworzenia
+  envContent.split(/\r?\n/).forEach(line => {
+    // Ignorowanie komentarzy oraz pustych linii w pliku konfiguracyjnym
+    if (!line || line.startsWith('#')) return;
+    
+    // Podział linii na klucz i wartość przy pierwszym wystąpieniu znaku '='
+    const parts = line.split('=');
+    if (parts.length >= 2) {
+      const key = parts[0].trim();
+      let val = parts.slice(1).join('=').trim();
+      
+      // Usunięcie ewentualnych cudzysłowów lub apostrofów otaczających wartość zmiennej
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.substring(1, val.length - 1);
+      }
+      
+      // Zapisanie wyodrębnionej pary do zmiennych środowiskowych procesu Node.js
+      process.env[key] = val;
+    }
+  });
+}
+
+// Inicjalizacja klienta Prisma do komunikacji z bazą danych
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+// Dynamiczny import biblioteki haszującej hasła w celu uniknięcia błędów instalacji (crash) na różnych platformach.
+let bcrypt;
+try {
+  // Próba załadowania zoptymalizowanej, natywnej biblioteki bcrypt (wymaga kompilacji binarnej)
+  bcrypt = require('bcrypt');
+} catch (e) {
+  try {
+    // Rezerwowe załadowanie biblioteki bcryptjs napisanej w czystym JS (wolniejsza, lecz w 100% przenośna)
+    bcrypt = require('bcryptjs');
+  } catch (err) {
+    console.error('Neither bcrypt nor bcryptjs could be loaded. Please ensure one of them is installed.');
+    process.exit(1);
+  }
+}
+
+// Główna funkcja asynchroniczna wykonująca logikę weryfikacji i zasiewu
+async function main() {
+  try {
+    console.log('Checking database status...');
+    
+    // Wskazanie ścieżki do pliku z danymi użytkowników do wstawienia
+    const userJsonPath = path.join(__dirname, '../user.json');
+    if (!fs.existsSync(userJsonPath)) {
+      console.error('user.json file not found at:', userJsonPath);
+      process.exit(1);
+    }
+    
+    // Wczytanie i konwersja danych użytkowników z formatu tekstowego JSON do tablicy obiektów JavaScript
+    const usersData = JSON.parse(fs.readFileSync(userJsonPath, 'utf-8'));
+    let createdCount = 0;
+    
+    // Iteracja po zdefiniowanych w pliku kontach użytkowników
+    for (const userData of usersData) {
+      // Wyszukanie w bazie danych użytkownika po unikalnym kluczu, jakim jest adres e-mail
+      const existingUser = await prisma.user.findUnique({
+        where: { email: userData.email }
+      });
+      
+      // Jeżeli użytkownik nie istnieje, następuje proces haszowania hasła i zapisu w bazie
+      if (!existingUser) {
+        // Haszowanie hasła metodą bcrypt z użyciem soli o współczynniku kosztu 10
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        
+        // Zapis rekordu użytkownika w bazie danych przy użyciu Prisma Client
+        await prisma.user.create({
+          data: {
+            email: userData.email,
+            name: userData.name,
+            password: hashedPassword,
+          }
+        });
+        console.log(`Created default user: ${userData.email}`);
+        createdCount++;
+      } else {
+        console.log(`User already exists: ${userData.email}`);
+      }
+    }
+    
+    // Wyświetlenie statystyk podsumowujących działanie skryptu
+    if (createdCount > 0) {
+      console.log(`Seeding complete. Created ${createdCount} default users.`);
+    } else {
+      console.log('All default users already exist in the database. No seeding needed.');
+    }
+  } catch (error) {
+    console.error('Error during database check/seed:', error);
+    process.exit(1);
+  } finally {
+    // Bezpieczne zamknięcie połączenia z bazą danych w celu zwolnienia zasobów (connection pool)
+    await prisma.$disconnect();
+  }
+}
+
+// Uruchomienie skryptu głównego
+main();
+```
+---

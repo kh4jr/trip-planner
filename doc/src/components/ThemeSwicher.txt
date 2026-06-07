@@ -1,0 +1,44 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) odpowiedzialny za przełączanie motywu kolorystycznego interfejsu (tryb jasny vs tryb ciemny) z użyciem biblioteki `next-themes`.
+- **Typ komponentu**: Client Component (komponent kliencki). Wymaga dostępu do obiektów środowiska przeglądarki (np. localStorage, drzewo DOM) w celu zmiany klas lub atrybutów motywu.
+- **Główna Logika Biznesowa**:
+  - Rozwiązanie problemu hydracji (Hydration Mismatch): Next.js renderuje komponenty po stronie serwera (SSR). Ponieważ serwer nie wie, jaki motyw zapisał użytkownik w pamięci przeglądarki, renderowanie przycisku z ikoną motywu mogłoby się różnić, wywołując błąd dopasowania drzewa DOM. Użycie zmiennej stanu `mounted` i ustawienie jej na `true` w `useEffect` gwarantuje, że przycisk zostanie wyrenderowany dopiero po stronie klienta (Client-side rendering).
+  - Obsługa przełącznika: Przycisk zmienia wartość motywu wywołując `setTheme('dark' | 'light')` na podstawie bieżącej wartości `theme`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```javascript
+"use client";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
+
+const ThemeSwitcher = () => {
+  // Stan określający, czy komponent został już zamontowany w przeglądarce
+  const [mounted, setMounted] = useState(false);
+  // Pobranie aktualnego motywu oraz funkcji modyfikującej z next-themes
+  const { theme, setTheme } = useTheme(); 
+
+  // Wywoływane tylko raz przy montowaniu komponentu w przeglądarce
+  useEffect(() => setMounted(true), []);
+
+  // Jeśli komponent nie jest jeszcze zamontowany po stronie klienta, zwracamy null.
+  // Zapobiega to błędom Hydration Mismatch w Next.js.
+  if (!mounted) return null; 
+
+  return (
+    <button
+      // Zmiana motywu w zależności od stanu obecnego (odwrócenie trybu)
+      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+      className="p-2 rounded-full hover:bg-white/20 transition-colors" 
+      aria-label="Toggle dark mode"
+    >
+      {/* Dynamiczna zmiana etykiety tekstowej przycisku */}
+      {theme === 'light' ? '🌙 Ciemny' : '☀️ Jasny'}
+    </button>
+  );
+};
+
+export default ThemeSwitcher;
+```

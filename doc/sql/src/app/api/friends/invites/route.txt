@@ -1,0 +1,93 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/friends/invites/route.ts` obsługuje pobieranie oczekujących zaproszeń do grona znajomych (metoda GET). Zapytanie pobiera wpisy z tabeli `Friend`, gdzie zalogowany użytkownik jest odbiorcą zaproszenia (`friendId` odpowiada identyfikatorowi zalogowanego użytkownika), a status zaproszenia wynosi `"PENDING"`. Dodatkowo pobierane są podstawowe dane nadawcy zaproszenia (relacja z tabeli `User`).
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Wyszukiwanie zaproszeń w tabeli `Friend` powiązanych z nadawcą z tabeli `User` za pomocą operacji złączenia (`db.friend.findMany` z klauzulą `include`).
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Pobieranie zaproszeń (`db.friend.findMany` z `include`)**
+   - Prisma:
+     ```typescript
+     db.friend.findMany({
+       where: {
+         friendId: userId,
+         status: "PENDING",
+       },
+       include: {
+         user: {
+           select: {
+             id: true,
+             name: true,
+             email: true,
+           },
+         },
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT 
+       f.id, f."userId", f."friendId", f.status,
+       u.id AS "user_id", u.name AS "user_name", u.email AS "user_email"
+     FROM "Friend" AS f
+     INNER JOIN "User" AS u ON f."userId" = u.id
+     WHERE f."friendId" = $1 AND f.status = 'PENDING';
+     ```
+   - *Wyjaśnienie*: Wykonuje zapytanie SELECT z złączeniem INNER JOIN między tabelami `"Friend"` (zaproszenia) i `"User"` (dane nadawcy). Filtruje zaproszenia, w których zalogowany użytkownik jest odbiorcą (`friendId` = $1) oraz status relacji to `'PENDING'` (oczekujące). Wyszukiwanie jest optymalizowane przez indeksy na kolumnach `"friendId"` oraz `"userId"`.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../auth/[...nextauth]/route";
+import { db } from "../../../../lib/db"; 
+import { NextResponse } from "next/server";
+
+/**
+ * Metoda GET zwracająca listę oczekujących zaproszeń do znajomych (status: "PENDING") dla zalogowanego użytkownika.
+ * Wykorzystuje operację SELECT ze złączeniem (JOIN) tabel "Friend" oraz "User" w celu dołączenia danych nadawcy.
+ */
+export async function GET() {
+  // Pobranie sesji w celu autoryzacji i identyfikacji bieżącego użytkownika.
+  const session = await getServerSession(authOptions);
+
+  console.log("SESSION IN INVITES:", session);
+
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  console.log("USER ID IN INVITES:", userId);
+
+  // Jeśli użytkownik jest niezalogowany, zwracana jest pusta tablica ze statusem 200.
+  if (!userId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Zapytanie SELECT do tabeli "Friend" z warunkiem filtrowania na friendId (zalogowany użytkownik)
+  // oraz status "PENDING" (zaproszenie oczekujące na akceptację).
+  // Klauzula include realizuje złączenie z tabelą "User" w celu pobrania nazwy i e-maila nadawcy.
+  // Unikalne ograniczenie na poziomie bazy danych @@unique([userId, friendId]) w modelu Friend zapobiega
+  // duplikowaniu zaproszeń między tą samą parą użytkowników.
+  const invites = await db.friend.findMany({
+    where: {
+      friendId: userId,
+      status: "PENDING",
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return NextResponse.json(invites);
+}
+```

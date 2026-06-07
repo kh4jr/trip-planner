@@ -1,0 +1,90 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/lib/data.ts` to dedykowany moduł deklaracji typów i interfejsów TypeScript. W architekturze aplikacji pełni on funkcję definicji warstwy modeli danych (Data Models), z których korzystają komponenty klienckie, formularze oraz funkcje pobierania danych w celu zapewnienia silnego typowania w całym cyklu życia aplikacji.
+
+Kluczowe elementy zdefiniowane w pliku to:
+1. **Model Uczestnika (`Participant`)**: Reprezentuje osobę przypisaną do podróży wraz z rolą i adresem e-mail oraz powiązaniem z wieloma podróżami.
+2. **Model Podróży (`Trip`)**: Określa właściwości głównego obiektu systemu (nazwa, cel, daty rozpoczęcia/zakończenia) oraz zawiera zagnieżdżoną listę uczestników.
+3. **Model Aktywności (`Activity`)**: Definiuje planowane zajęcia w ramach podróży, w tym nazwę, kategorię, czas, lokalizację i cenę oraz uczestniczące osoby.
+4. **Model Wydatku (`Expense`)**: Strukturyzuje koszty podróży na potrzeby kalkulacji bilansów (kwota, kategoria, opis, płatnik).
+5. **Model Zadania (`TripItem`)**: Reprezentuje pojedyncze zadanie do wykonania w ramach przygotowań do podróży (ToDo list).
+6. **Model Notatki (`Note`)**: Opisuje notatki powiązane z podróżą.
+7. **Typ Formularza (`TripFormData`)**: Typ pomocniczy stworzony przy użyciu wbudowanego w TypeScript helpera `Omit`, dopasowujący strukturę danych podróży pod kątem tworzenia jej przez formularz (wykluczając automatycznie generowane klucze główne).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kod źródłowy pliku z akademickimi objaśnieniami typów danych w języku polskim:
+
+```typescript
+// Interfejs reprezentujący uczestnika podróży.
+export interface Participant {
+  id: number;      // Unikalny identyfikator numeryczny uczestnika
+  name: string;    // Imię i nazwisko uczestnika
+  email: string;   // Adres poczty elektronicznej uczestnika
+  role: string;    // Rola w podróży (np. 'admin', 'member')
+  // tripId: number; // Opcjonalny klucz obcy (zakomentowany na rzecz bezpośredniej relacji)
+  trips: Trip[];   // Relacja typu wiele-do-wielu: podróże, w których uczestniczy ta osoba
+}
+
+// Interfejs reprezentujący podróż.
+export interface Trip {
+  id: number;                  // Unikalny identyfikator podróży
+  name: string;                // Nazwa podróży (np. "Wakacje w Rzymie")
+  destination: string;         // Miejsce docelowe podróży
+  startDate: string;           // Data rozpoczęcia w formacie tekstowym (np. ISO string)
+  endDate: string;             // Data zakończenia podróży
+  participants: Participant[]; // Tablica powiązanych uczestników podróży (relacja jeden-do-wielu/wiele-do-wielu)
+}
+
+// Interfejs dla aktywności/atrakcji zaplanowanych podczas wyjazdu.
+export interface Activity { 
+  id: number; 
+  tripId: number;              // Powiązanie z konkretną podróżą (klucz obcy)
+  name: string;                // Nazwa aktywności (np. "Zwiedzanie Koloseum")
+  category: string;            // Kategoria (np. "Sightseeing", "Food")
+  time: string;                // Godzina/czas trwania aktywności
+  location: string;            // Miejsce realizacji aktywności
+  price: number;               // Koszt udziału
+  trip: Trip;                  // Obiekt podróży powiązanej (dla zapytań relacyjnych)
+  participants: string[];      // Lista imion uczestników biorących udział w danej aktywności
+}
+
+// Interfejs opisujący pojedynczy wydatek w ramach rozliczeń finansowych.
+export interface Expense { 
+  id: number; 
+  tripId: number;              // Identyfikator powiązanej podróży
+  amount: number;              // Kwota wydatku
+  category: string;            // Kategoria wydatku (np. "Transport", "Zakwaterowanie")
+  description: string;         // Krótki opis czego dotyczył wydatek
+  date: string;                // Data zaksięgowania wydatku
+  paidBy: string;              // Nazwisko osoby, która pokryła wydatek
+}
+
+// Interfejs reprezentujący pozycję na liście kontrolnej (checklist) podróży.
+export interface TripItem { 
+  id: number; 
+  tripId: number; 
+  name: string;                // Nazwa zadania (np. "Kupić krem do opalania")
+  isCompleted: boolean;        // Status realizacji zadania
+  category: string;            // Kategoria zadania (np. "Pakowanie", "Bilety")
+}
+
+// Interfejs dla notatek tekstowych powiązanych z podróżą.
+export interface Note { 
+  id: number; 
+  tripId: number; 
+  content: string;             // Treść notatki
+  date: string;                // Data dodania notatki
+}
+
+// Definicja typu narzędziowego na potrzeby formularza tworzenia nowej podróży.
+// Typ ten dziedziczy strukturę z interfejsu Trip, ale wyklucza pole 'id' (które generuje baza danych) 
+// oraz tablicę 'participants', zastępując ją tablicą uczestników bez pól 'id' i 'tripId'.
+// Wykorzystuje wbudowany typ generyczny Omit<T, K> do manipulacji właściwościami typu.
+export type TripFormData = Omit<Trip, 'id' | 'participants'> & {
+  participants: Omit<Participant, 'id' | 'tripId'>[];
+};
+```
+---

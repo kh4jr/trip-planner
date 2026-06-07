@@ -1,0 +1,148 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/expenses/route.ts` zarządza wydatkami przypisanymi do wycieczek (model `Expense`). Obsługuje pobieranie wszystkich wydatków powiązanych z daną wycieczką (GET), dodawanie nowego wydatku (POST) oraz usuwanie istniejącego wydatku (DELETE). Operacje te wpływają na tabelę `Expense`, która posiada relację typu wiele-do-jednego (many-to-one) z tabelą `Trip`.
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Pobieranie wszystkich wydatków powiązanych z określonym identyfikatorem wycieczki (`db.expense.findMany`).
+- **Insert (Create)**: Dodawanie nowego wydatku do bazy danych (`db.expense.create`).
+- **Delete (Delete)**: Usuwanie wydatku na podstawie jego unikalnego identyfikatora (`db.expense.delete`).
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Pobieranie wydatków wycieczki (`db.expense.findMany`)**
+   - Prisma:
+     ```typescript
+     db.expense.findMany({
+       where: { tripId: parseInt(tripId) },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "description", "amount", "paidBy", "category", "tripId"
+     FROM "Expense"
+     WHERE "tripId" = $1;
+     ```
+   - *Wyjaśnienie*: Wykonuje zapytanie SELECT z klauzulą WHERE filtrującą po kolumnie `"tripId"`. Wyszukuje wszystkie wydatki przypisane do danej wycieczki. Szybkość wykonania zależy od obecności indeksu na kluczu obcym `"tripId"`.
+
+2. **Tworzenie wydatku (`db.expense.create`)**
+   - Prisma:
+     ```typescript
+     db.expense.create({
+       data: {
+         description: body.description,
+         amount: parseFloat(body.amount),
+         paidBy: body.paidBy,
+         category: body.category || "other",
+         tripId: parseInt(body.tripId),
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     INSERT INTO "Expense" ("description", "amount", "paidBy", "category", "tripId")
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING "id", "description", "amount", "paidBy", "category", "tripId";
+     ```
+   - *Wyjaśnienie*: Wstawia nowy rekord do tabeli `"Expense"`. Typ danych dla kolumny `"amount"` to zmiennoprzecinkowy (Float). Baza danych weryfikuje integralność referencyjną klucza obcego `"tripId"` odnoszącego się do klucza głównego tabeli `"Trip"`.
+
+3. **Usuwanie wydatku (`db.expense.delete`)**
+   - Prisma:
+     ```typescript
+     db.expense.delete({
+       where: { id: Number(id) },
+     })
+     ```
+   - SQL:
+     ```sql
+     DELETE FROM "Expense"
+     WHERE "id" = $1
+     RETURNING "id", "description", "amount", "paidBy", "category", "tripId";
+     ```
+   - *Wyjaśnienie*: Wykonuje operację DELETE na tabeli `"Expense"`. Lokalizacja rekordu do usunięcia odbywa się za pomocą klucza głównego `"id"`, co przekłada się na natychmiastowe wyszukanie w indeksie klucza głównego (Index Scan) i usunięcie w czasie logarytmicznym.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+/**
+ * Metoda GET zwracająca listę wydatków powiązanych z daną wycieczką.
+ * Wykonuje operację SELECT na tabeli "Expense" filtrując po kluczu obcym "tripId".
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const tripId = searchParams.get("tripId");
+  
+  // Weryfikacja poprawności danych wejściowych. Brak parametru skutkuje zwróceniem pustej tablicy.
+  if (!tripId) return NextResponse.json([]);
+
+  // Zapytanie SELECT pobierające listę wydatków dla konkretnego tripId.
+  // Korzysta z relacji "Trip" -> "Expense".
+  const expenses = await db.expense.findMany({
+    where: { tripId: parseInt(tripId) },
+  });
+
+  return NextResponse.json(expenses);
+}
+
+/**
+ * Metoda POST służąca do tworzenia nowego rekordu wydatku.
+ * Wykonuje operację INSERT do tabeli "Expense".
+ */
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    // Wykonanie operacji INSERT w bazie danych.
+    // Parametryzacja zapobiega atakom SQL Injection.
+    // Prisma automatycznie rzutuje typy zmiennych (np. parseFloat na typ zmiennoprzecinkowy).
+    const newExpense = await db.expense.create({
+      data: {
+        description: body.description,
+        amount: parseFloat(body.amount),
+        paidBy: body.paidBy,
+        category: body.category || "other", // Domyślna kategoria, jeśli nie została podana
+        tripId: parseInt(body.tripId),
+      },
+    });
+
+    return NextResponse.json(newExpense);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Błąd zapisu wydatku";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+/**
+ * Metoda DELETE obsługująca usuwanie istniejącego rekordu wydatku.
+ * Wykonuje operację DELETE na tabeli "Expense" po kluczu głównym (id).
+ */
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Operacja usuwania rekordu na podstawie jego unikalnego identyfikatora (id).
+    // Ponieważ "id" jest kluczem głównym, zapytanie jest bardzo wydajne i precyzyjne.
+    await db.expense.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE EXPENSE:", error);
+    return NextResponse.json(
+      { error: "Nie udało się usunąć wydatku" },
+      { status: 500 }
+    );
+  }
+}
+```

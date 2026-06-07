@@ -1,0 +1,33 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent makiety ładowania (UI Skeleton Component) stosowany do tworzenia efektu płynnego ładowania interfejsu użytkownika (efekt "shimmer/skeleton screen"). Reprezentuje pusty kształt odpowiadający ładowanemu elementowi strony. Jest to komponent kliencki (zadeklarowany jako `"use client"`).
+- **Logika biznesowa i właściwości**:
+  - Komponent przyjmuje jedną opcjonalną właściwość `className`. Pozwala to na pełną reusability i dostosowanie wymiarów (szerokości, wysokości, marginesów) szkieletu do kształtu ładowanych komponentów bezpośrednio w miejscu ich wywołania.
+- **Struktura wizualna**:
+  - Wykorzystuje animację pulsowania (`animate-pulse`) oraz zaokrąglone rogi (`rounded-xl`) z delikatnym niebieskawym tłem (`bg-blue-100/60`).
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+"use client"; // Komponent kliencki.
+
+// Typowanie dla właściwości wejściowych szkieletu.
+type SkeletonProps = {
+  className?: string; // Opcjonalna klasa CSS nadpisująca domyślne wymiary/style elementu.
+};
+
+// Definicja komponentu Skeleton.
+export default function Skeleton({ className = "" }: SkeletonProps) {
+  return (
+    // Zwrócenie pojedynczego tagu div pełniącego funkcję wizualnego wskaźnika ładowania.
+    // animate-pulse wywołuje płynną animację zmiany przezroczystości (efekt pulsowania).
+    // bg-blue-100/60 definiuje kolor tła pasujący do motywu Trip Planner.
+    <div
+      className={`animate-pulse rounded-xl bg-blue-100/60 ${className}`}
+    />
+  );
+}
+```
+---

@@ -1,0 +1,40 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent dostawców kontekstu (Providers Component) umieszczony w katalogu `/src/app`. Jest to komponent kliencki (zadeklarowany dyrektywą `'use client'`), który integruje globalnych dostawców stanu i motywów dla całej aplikacji Next.js w jednym pliku, co ułatwia zarządzanie i czystość kodu w głównym szablonie `layout.tsx`.
+- **Logika biznesowa i zarządzanie danymi**:
+  - `SessionProvider` (z biblioteki `next-auth/react`): Umożliwia dostęp do stanu sesji użytkownika (informacji o zalogowaniu, danych profilowych) w dowolnym komponencie klienckim przy użyciu hooka `useSession` lub funkcji pomocniczych.
+  - `ThemeProvider` (z biblioteki `next-themes`): Zarządza dynamiczną zmianą motywów graficznych (jasny/ciemny/systemowy). Konfiguracja `attribute="class"` sprawia, że wybrany motyw dodaje klasę `dark` do głównego elementu `<html>`, co idealnie współgra z mechanizmem Tailwind CSS Dark Mode. Konfiguracja `defaultTheme="system"` oraz `enableSystem` automatycznie dostosowuje wygląd aplikacji do ustawień systemowych urządzenia użytkownika.
+- **Struktura wizualna i renderowanie danych**:
+  - Komponent nie renderuje własnych elementów graficznych (UI), a jedynie przekazuje zagnieżdżone elementy `children` wewnątrz zdefiniowanych dostawców kontekstu.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```tsx
+'use client'; // Deklaracja komponentu jako Client Component, niezbędna, ponieważ dostawcy używają kontekstu Reacta (React Context API) i hooków po stronie przeglądarki.
+
+import { SessionProvider } from 'next-auth/react'; // Import dostawcy sesji uwierzytelniania z biblioteki NextAuth.
+import { ThemeProvider } from 'next-themes'; // Import dostawcy motywu graficznego z biblioteki next-themes.
+import React from 'react';
+
+// Definicja głównego komponentu Providers, który przyjmuje dzieci jako ReactNode.
+export default function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    // Zagnieżdżenie dostawcy sesji w celu umożliwienia weryfikacji tożsamości użytkownika w całej aplikacji.
+    <SessionProvider> 
+      { }
+      {/* 
+        Konfiguracja dostawcy motywu:
+        - attribute="class": Zmiana motywu wpływa na dodanie odpowiedniej klasy (np. .dark) do tagu HTML.
+        - defaultTheme="system": Domyślny wybór motywu na podstawie preferencji systemu operacyjnego.
+        - enableSystem: Włączenie nasłuchiwania na zmiany preferencji systemowych użytkownika.
+      */}
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        {children} {/* Renderowanie podrzędnych komponentów aplikacji owiniętych w dostawców kontekstu. */}
+      </ThemeProvider>
+    </SessionProvider>
+  );
+}
+```
+---

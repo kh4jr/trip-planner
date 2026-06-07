@@ -1,0 +1,166 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/todo/route.ts` zarządza elementami listy rzeczy do spakowania lub zadań (`TripItem`) powiązanych z określonym wyjazdem (`Trip`). Obsługuje pobieranie, dodawanie oraz usuwanie poszczególnych pozycji zadań/rzeczy.
+
+**Operacje CRUD:**
+- **Select (Read)**: Pobieranie zadań powiązanych z danym wyjazdem na podstawie identyfikatora wyjazdu (`tripId`), posortowanych rosnąco według identyfikatora zadania (`id`).
+- **Insert (Create)**: Wstawianie nowego rekordu zadania (`TripItem`) z przypisanym tekstem (`name`), identyfikatorem wyjazdu (`tripId`) oraz początkowym stanem wykonania ustawionym na fałsz (`isCompleted: false`).
+- **Delete (Delete)**: Usuwanie określonego zadania z bazy danych przy użyciu unikalnego klucza głównego zadania (`id`).
+
+**Interpretacja SQL:**
+1. **Pobieranie zadań (GET)**
+   Metoda Prisma Client:
+   ```typescript
+   const todos = await db.tripItem.findMany({
+     where: { tripId: Number(tripId) },
+     orderBy: { id: "asc" },
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   SELECT 
+       "id", 
+       "name", 
+       "category", 
+       "isCompleted", 
+       "packedBy", 
+       "tripId" 
+   FROM 
+       "TripItem" 
+   WHERE 
+       "tripId" = $1 
+   ORDER BY 
+       "id" ASC;
+   ```
+   *Wyjaśnienie:* Baza danych wyszukuje wszystkie rekordy w tabeli `TripItem`, gdzie klucz obcy `tripId` jest równy przekazanej wartości. Wyniki są następnie sortowane rosnąco przy użyciu indeksu klucza głównego `id` (unikając kosztownego sortowania w pamięci).
+
+2. **Tworzenie zadania (POST)**
+   Metoda Prisma Client:
+   ```typescript
+   const todo = await db.tripItem.create({
+     data: {
+       name: content,
+       tripId: Number(tripId),
+       isCompleted: false,
+     },
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   INSERT INTO "TripItem" ("name", "category", "isCompleted", "packedBy", "tripId")
+   VALUES ($1, $2, $3, NULL, $4)
+   RETURNING "id", "name", "category", "isCompleted", "packedBy", "tripId";
+   ```
+   *Wyjaśnienie:* Operacja `INSERT` wstawia nowy wiersz. Prisma jawnie przekazuje wartość domyślną dla kategorii (`"Inne"` lub bazodanowy default) oraz `isCompleted` jako `false`. Klucz obcy `tripId` jest weryfikowany w celu zapewnienia integralności referencyjnej z tabelą `Trip`. Klauzula `RETURNING` zwraca utworzony rekord wraz z wygenerowanym automatycznie przez sekwencję numerem `id`.
+
+3. **Usuwanie zadania (DELETE)**
+   Metoda Prisma Client:
+   ```typescript
+   await db.tripItem.delete({
+     where: { id: Number(id) },
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   DELETE FROM "TripItem" 
+   WHERE "id" = $1;
+   ```
+   *Wyjaśnienie:* Usuwanie pojedynczego rekordu na podstawie jego klucza głównego (`id`). Operacja ta jest niezwykle szybka, ponieważ odwołuje się bezpośrednio do indeksu unikalnego klucza głównego. Usunięcie wiersza nie wpływa na inne tabele, ponieważ `TripItem` jest tabelą podrzędną (dzieckiem) w relacji z tabelą `Trip` (rodzicem).
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+// Pobieranie zadań dla określonego wyjazdu (Read/Select)
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tripId = searchParams.get("tripId");
+
+    // Walidacja obecności parametru wejściowego
+    if (!tripId) {
+      return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+    }
+
+    // Odpytanie bazy danych o listę zadań.
+    // Filtrowanie za pomocą klucza obcego tripId (referencja do tabeli Trip).
+    // Sortowanie po kluczu głównym (id) zapewnia spójną kolejność wyświetlania zadań.
+    const todos = await db.tripItem.findMany({
+      where: { tripId: Number(tripId) },
+      orderBy: { id: "asc" },
+    });
+
+    return NextResponse.json(todos);
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Błąd pobierania zadań" },
+      { status: 500 }
+    );
+  }
+}
+
+// Tworzenie nowego zadania (Create/Insert)
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { content, tripId } = body;
+
+    // Walidacja obecności niezbędnych pól w ciele żądania
+    if (!content || !tripId) {
+      return NextResponse.json(
+        { error: "Treść zadania i ID wyjazdu są wymagane" },
+        { status: 400 }
+      );
+    }
+
+    // Wstawianie rekordu do tabeli TripItem.
+    // Baza danych weryfikuje istnienie rekordu o kluczu głównym równym tripId w tabeli Trip (klucz obcy).
+    // Domyślne wartości dla category ("Inne") są automatycznie aplikowane.
+    const todo = await db.tripItem.create({
+      data: {
+        name: content,
+        tripId: Number(tripId),
+        isCompleted: false,
+      },
+    });
+
+    return NextResponse.json(todo);
+  } catch (error) {
+    console.error("Błąd podczas tworzenia zadania:", error);
+    return NextResponse.json(
+      { error: "Wystąpił błąd podczas zapisywania zadania" },
+      { status: 500 }
+    );
+  }
+}
+
+// Usuwanie zadania na podstawie identyfikatora (Delete)
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    // Weryfikacja obecności identyfikatora obiektu do usunięcia
+    if (!id) {
+      return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+    }
+
+    // Usunięcie rekordu z tabeli TripItem przy użyciu unikalnego identyfikatora (id).
+    // Wykorzystanie indeksu klucza głównego pozwala na natychmiastowe zlokalizowanie i usunięcie wiersza.
+    await db.tripItem.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("BŁĄD DELETE TODO:", error);
+    return NextResponse.json(
+      { error: "Nie udało się usunąć zadania" },
+      { status: 500 }
+    );
+  }
+}
+```

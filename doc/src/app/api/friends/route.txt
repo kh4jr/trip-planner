@@ -1,0 +1,233 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/friends/route.ts` pełni funkcję **API Route Endpoint** w strukturze Next.js, obsługując kompleksowo relacje przyjacielskie między użytkownikami aplikacji. Implementuje cztery metody HTTP (GET, POST, DELETE, PUT):
+1. **GET**: Pobiera listę zaakceptowanych znajomych (`status: "ACCEPTED"`) dla zalogowanego użytkownika. Dodatkowo pobiera wszystkie wyjazdy zalogowanego użytkownika oraz oblicza liczbę wspólnych wyjazdów (`tripsTogether`) z każdym ze znajomych, co pozwala na prezentację statystyk na frontendzie.
+2. **POST**: Wysyła nowe zaproszenie do grona znajomych. Waliduje sesję użytkownika, sprawdza czy relacja (zaproszenie lub znajomość) już istnieje w bazie danych (aby uniknąć duplikatów), a następnie tworzy wpis ze statusem `PENDING`.
+3. **DELETE**: Umożliwia odrzucenie zaproszenia (`mode: "invite"`) lub usunięcie użytkownika ze znajomych (`mode: "friend"`). Wykorzystuje `deleteMany` w Prisma do usunięcia pasujących rekordów w zależności od wybranego trybu.
+4. **PUT**: Służy do akceptacji zaproszenia do znajomych. Wyszukuje rekord zaproszenia, w którym zalogowany użytkownik jest odbiorcą (`friendId`), a wysyłającym jest `userId: friendId`. Zmienia status relacji na `ACCEPTED`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+/**
+ * Endpoint GET - Pobieranie listy znajomych oraz obliczanie wspólnych wyjazdów.
+ */
+export async function GET() {
+  // Pobranie i weryfikacja sesji zalogowanego użytkownika
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Pobranie relacji, gdzie status to 'ACCEPTED', a użytkownik jest nadawcą lub odbiorcą
+  const friends = await db.friend.findMany({
+    where: {
+      status: "ACCEPTED",
+      OR: [{ userId: meId }, { friendId: meId }],
+    },
+    include: {
+      user: true,   // Dane nadawcy
+      friend: true, // Dane odbiorcy
+    },
+  });
+
+  // Pobranie wyjazdów zalogowanego użytkownika wraz z listą ich uczestników
+  const myTrips = await db.trip.findMany({
+    where: {
+      participants: {
+        some: {
+          userId: meId,
+        },
+      },
+    },
+    select: {
+      id: true,
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  // Mapowanie wyników w celu wyodrębnienia danych znajomego i wyliczenia wspólnych podróży
+  const result = friends.map((f) => {
+    // Określenie, który obiekt w relacji reprezentuje znajomego (ten o innym ID niż zalogowany)
+    const other =
+      f.userId === meId ? f.friend : f.user;
+
+    // Filtrowanie wyjazdów w celu znalezienia tych, w których uczestniczy również dany znajomy
+    const tripsTogether = myTrips.filter((trip) =>
+      trip.participants.some(
+        (p) => p.userId === other.id
+      )
+    ).length;
+
+    return {
+      id: other.id,
+      name: other.name,
+      email: other.email,
+      tripsTogether,
+    };
+  });
+
+  return NextResponse.json(result);
+}
+
+/**
+ * Endpoint POST - Wysłanie zaproszenia do znajomych.
+ */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
+  }
+
+  const { friendId } = await req.json();
+
+  // Walidacja czy nie zapraszamy samego siebie oraz czy podano ID znajomego
+  if (!friendId || friendId === userId) {
+    return NextResponse.json(
+      { error: "Nieprawidłowy friendId" },
+      { status: 400 }
+    );
+  }
+
+  // Sprawdzenie czy relacja w dowolnym kierunku już istnieje (zaakceptowana lub oczekująca)
+  const existing = await db.friend.findFirst({
+    where: {
+      OR: [
+        { userId, friendId },
+        { userId: friendId, friendId: userId },
+      ],
+    },
+  });
+
+  if (existing) {
+    return NextResponse.json(
+      { error: "Relacja już istnieje" },
+      { status: 409 } // Status 409 Conflict
+    );
+  }
+
+  // Utworzenie nowego rekordu zaproszenia o statusie PENDING
+  const invite = await db.friend.create({
+    data: {
+      userId,
+      friendId,
+      status: "PENDING",
+    },
+  });
+
+  return NextResponse.json(invite);
+}
+
+/**
+ * Endpoint DELETE - Usunięcie relacji znajomego lub odrzucenie/wycofanie zaproszenia.
+ */
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!meId) {
+    return NextResponse.json({ error: "Brak auth" }, { status: 401 });
+  }
+
+  const { friendId, mode } = await req.json();
+
+  if (!friendId || !mode) {
+    return NextResponse.json(
+      { error: "Brak danych" },
+      { status: 400 }
+    );
+  }
+
+  // Tryb odrzucenia oczekującego zaproszenia wysłanego do zalogowanego użytkownika
+  if (mode === "invite") {
+    await db.friend.deleteMany({
+      where: {
+        userId: friendId,   // Nadawca zaproszenia
+        friendId: meId,     // Odbiorca zaproszenia (zalogowany)
+        status: "PENDING",
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  // Tryb usunięcia z grona znajomych (kasuje relację ACCEPTED niezależnie od kierunku utworzenia)
+  if (mode === "friend") {
+    await db.friend.deleteMany({
+      where: {
+        status: "ACCEPTED",
+        OR: [
+          { userId: meId, friendId },
+          { userId: friendId, friendId: meId },
+        ],
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  return NextResponse.json(
+    { error: "Nieznany tryb" },
+    { status: 400 }
+  );
+}
+
+/**
+ * Endpoint PUT - Akceptacja zaproszenia do znajomych (zmiana statusu z PENDING na ACCEPTED).
+ */
+export async function PUT(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
+  }
+
+  const { friendId } = await req.json();
+
+  if (!friendId) {
+    return NextResponse.json(
+      { error: "Brak friendId" },
+      { status: 400 }
+    );
+  }
+
+  // Wyszukanie oczekującego zaproszenia wysłanego przez drugą stronę (userId to nadawca, friendId to odbiorca)
+  const invite = await db.friend.findFirst({
+    where: {
+      userId: friendId,
+      friendId: userId,
+      status: "PENDING",
+    },
+  });
+
+  if (!invite) {
+    return NextResponse.json(
+      { error: "Nie znaleziono zaproszenia" },
+      { status: 404 }
+    );
+  }
+
+  // Aktualizacja statusu zaproszenia na ACCEPTED
+  const updated = await db.friend.update({
+    where: { id: invite.id },
+    data: { status: "ACCEPTED" },
+  });
+
+  return NextResponse.json(updated);
+}
+```

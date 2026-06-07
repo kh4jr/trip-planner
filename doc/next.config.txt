@@ -1,0 +1,38 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic
+Plik `next.config.ts` pełni rolę centralnego punktu konfiguracji środowiska uruchomieniowego i procesu budowania (build process) aplikacji opartej na frameworku Next.js. Jako plik konfiguracyjny, dostarcza on metadane i dyrektywy kompilatora dla bundlera Webpack/Turbopack, określając zachowanie serwera Next.js, reguły routingu, optymalizację zasobów (np. obrazów), a także integrację z zewnętrznymi usługami. 
+
+W kontekście architektury aplikacji, obiekt `nextConfig` o typie `NextConfig` pozwala na:
+- Konfigurację optymalizacji obrazów (`images.remotePatterns`).
+- Określanie zmiennych środowiskowych dostępnych po stronie serwera i klienta.
+- Wdrażanie reguł przepisywania adresów URL (rewrites) oraz przekierowań (redirects).
+- Włączanie eksperymentalnych funkcji frameworka (np. częściowego renderowania przedwstępnego - PPR).
+
+W obecnej, minimalistycznej formie plik ten eksportuje pusty obiekt konfiguracyjny, co oznacza użycie domyślnych ustawień dostarczanych przez Next.js.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kompletna struktura kodu pliku konfiguracyjnego wraz z akademickim komentarzem wyjaśniającym jego działanie oraz znaczenie w ekosystemie TypeScript/Next.js:
+
+```typescript
+// Importowanie wbudowanego typu NextConfig z biblioteki "next".
+// Import typu (import type) gwarantuje, że definicja ta zostanie usunięta podczas kompilacji do czystego JavaScriptu,
+// zapobiegając niepotrzebnemu narzutowi w pliku wynikowym (tzw. type-only import).
+import type { NextConfig } from "next";
+
+// Deklaracja stałej nextConfig o typie NextConfig.
+// Jawne typowanie pozwala na wczesne wykrywanie błędów konfiguracji na etapie pisania kodu (statyczna analiza typów).
+// W tym miejscu deweloper może umieścić opcje konfiguracyjne specyficzne dla projektu, takie jak nagłówki HTTP,
+// konfigurację Turbopacka czy wsparcie dla internacjonalizacji (i18n).
+const nextConfig: NextConfig = {
+  /* Opcje konfiguracyjne projektu mogą zostać zdefiniowane w tym miejscu */
+};
+
+// Domyślny eksport obiektu konfiguracyjnego.
+// Next.js automatycznie importuje ten moduł podczas uruchamiania serwera deweloperskiego (next dev)
+// oraz procesu budowania produkcyjnego (next build).
+export default nextConfig;
+```
+---

@@ -1,0 +1,57 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `prisma.config.ts.old.ts` odpowiada za konfigurację środowiska narzędziowego (CLI) i generatora mapowania obiektowo-relacyjnego (ORM) Prisma. Jest to plik konfiguracyjny używany do określenia parametrów pracy generatora schematów bazodanowych oraz ścieżek dostępu do kluczowych zasobów Prisma w projekcie.
+
+Do głównych zadań logicznych i architektonicznych tego pliku należą:
+1. **Zarządzanie Zmiennymi Środowiskowymi**: Poprzez import `dotenv/config`, plik wczytuje zmienne z pliku `.env` do obiektu `process.env`, co umożliwia bezpieczne odczytanie wrażliwych danych, takich jak adres URL bazy danych, bez hardkodowania ich w kodzie źródłowym.
+2. **Definicja Metadanych Schematu**: Wskazuje dokładną ścieżkę do pliku schematu Prisma (`prisma/schema.prisma`), który opisuje strukturę tabel, relacji oraz typów danych w bazie.
+3. **Konfiguracja Migracji**: Określa katalog docelowy dla plików migracji SQL generowanych przez Prisma Migrate.
+4. **Wybór Silnika Zapytania (Query Engine)**: Poprzez ustawienie `engine: "classic"`, definiuje typ silnika wykonawczego używanego do komunikacji z bazą danych (silnik binarny zamiast biblioteki Node-API).
+
+Plik ten ma rozszerzenie `.old.ts`, co sugeruje, że jest to archiwalna lub zapasowa konfiguracja Prisma, potencjalnie zastąpiona przez natywną konfigurację w nowszych wersjach narzędzia Prisma CLI.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kod źródłowy pliku konfiguracyjnego z wplecionymi szczegółowymi komentarzami naukowymi wyjaśniającymi mechanikę poszczególnych dyrektyw:
+
+```typescript
+// Plik wygenerowany automatycznie przez Prisma, wymagający wcześniejszej instalacji paczek:
+// npm install --save-dev prisma dotenv
+
+// Import modułu dotenv w celu automatycznego wczytania zmiennych środowiskowych z pliku .env do obiektu process.env.
+// Krok ten jest krytyczny, ponieważ adres bazy danych (DATABASE_URL) musi być dostępny przed inicjalizacją konfiguracji.
+import "dotenv/config";
+
+// Import funkcji pomocniczych defineConfig oraz helpera env z paczki konfiguracyjnej Prisma.
+// defineConfig zapewnia poprawność struktury obiektowej poprzez mechanizm autouzupełniania IDE oraz weryfikacji typów.
+import { defineConfig, env } from "prisma/config";
+
+// Definicja i domyślny eksport obiektu konfiguracji Prisma.
+export default defineConfig({
+  // Wskazanie ścieżki względnej do głównego pliku deklaracji schematu bazy danych.
+  // Jest to centralny plik zawierający modele danych (np. User, Trip, Expense) oraz definicję providera (np. PostgreSQL/SQLite).
+  schema: "prisma/schema.prisma",
+
+  // Konfiguracja systemu migracji schematu bazodanowego.
+  migrations: {
+    // Określenie ścieżki, w której Prisma CLI będzie zapisywać wygenerowane pliki migracyjne w formacie SQL.
+    // Ułatwia to śledzenie zmian w strukturze bazy danych w systemie kontroli wersji (Git).
+    path: "prisma/migrations",
+  },
+
+  // Konfiguracja silnika Prisma (Query Engine).
+  // Wartość "classic" odnosi się do klasycznego silnika wykonywania zapytań (Query Engine binary),
+  // co może być przydatne w specyficznych środowiskach uruchomieniowych (np. serverless o ograniczonym wsparciu dla Node-API).
+  engine: "classic",
+
+  // Konfiguracja źródła danych (Database Source).
+  datasource: {
+    // Dynamiczne pobranie adresu URL połączenia z bazą danych przy użyciu funkcji pomocniczej env().
+    // env("DATABASE_URL") bezpiecznie odczytuje wartość zmiennej środowiskowej o nazwie DATABASE_URL.
+    url: env("DATABASE_URL"),
+  },
+});
+```
+---

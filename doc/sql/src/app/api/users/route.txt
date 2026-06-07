@@ -1,0 +1,176 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `src/app/api/users/route.ts` implementuje wyszukiwanie innych zarejestrowanych użytkowników bazy danych na podstawie przekazanej frazy tekstowej (nazwa użytkownika lub e-mail) oraz sprawdza status relacji znajomości (`Friend`) pomiędzy zalogowanym użytkownikiem a wyszukanymi osobami.
+
+**Operacje CRUD:**
+- **Select (Read) na tabeli User**: Wyszukiwanie do 5 użytkowników pasujących do wzorca (case-insensitive `contains`) z wyłączeniem konta bieżącego użytkownika (`meId`).
+- **Select (Read) na tabeli Friend**: Pobieranie powiązań znajomości z tabeli `Friend` w celu ustalenia statusu relacji z wyszukanymi użytkownikami.
+
+**Interpretacja SQL:**
+1. **Wyszukiwanie użytkowników:**
+   Metoda Prisma Client:
+   ```typescript
+   const users = await db.user.findMany({
+     where: {
+       OR: [
+         { name: { contains: query, mode: "insensitive" } },
+         { email: { contains: query, mode: "insensitive" } },
+       ],
+       NOT: { id: meId },
+     },
+     select: { id: true, name: true, email: true },
+     take: 5,
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   SELECT 
+       "id", 
+       "name", 
+       "email" 
+   FROM 
+       "User" 
+   WHERE 
+       (
+           "name" ILIKE $1 
+           OR "email" ILIKE $2
+       ) 
+       AND NOT ("id" = $3) 
+   LIMIT 5;
+   ```
+   *Wyjaśnienie:* Wykorzystywany jest operator `ILIKE` (lub `LOWER()` w połączeniu z `LIKE`), co zapewnia niewrażliwość na wielkość liter podczas dopasowywania ciągu znaków (np. `%query%`). Klauzula `LIMIT 5` redukuje koszty transferu danych i skraca czas wykonania zapytania na dużych zbiorach.
+
+2. **Pobieranie powiązań znajomości:**
+   Metoda Prisma Client:
+   ```typescript
+   const friendships = await db.friend.findMany({
+     where: {
+       OR: [
+         { userId: meId, friendId: { in: userIds } },
+         { userId: { in: userIds }, friendId: meId },
+       ],
+     },
+   });
+   ```
+   Translacja na SQL:
+   ```sql
+   SELECT 
+       "id", 
+       "userId", 
+       "friendId", 
+       "status" 
+   FROM 
+       "Friend" 
+   WHERE 
+       (
+           "userId" = $1 AND "friendId" IN ($2, $3, $4, $5, $6)
+       ) 
+       OR 
+       (
+           "userId" IN ($2, $3, $4, $5, $6) AND "friendId" = $1
+       );
+   ```
+   *Wyjaśnienie:* Zapytanie wyszukuje wpisy w tabeli `Friend` łączące zalogowanego użytkownika (`$1`) z listą identyfikatorów wyszukanych wcześniej użytkowników (`userIds`). Dzięki zastosowaniu unikalnego klucza kompozytowego `@@unique([userId, friendId])` w modelu `Friend`, PostgreSQL optymalizuje to wyszukiwanie za pomocą unikalnego indeksu kompozytowego.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+export async function GET(req: Request) {
+  // Pobranie danych sesyjnych użytkownika wysyłającego żądanie
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  // Jeżeli użytkownik nie jest zalogowany, odrzucamy lub zwracamy pustą listę
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Odczytanie parametru wyszukiwania q z zapytania URL
+  const { searchParams } = new URL(req.url);
+  const query = searchParams.get("q");
+
+  // Wymagamy minimum 2 znaków do rozpoczęcia przeszukiwania bazy w celu ochrony przed przeciążeniem bazy danych
+  if (!query || query.length < 2) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Wyszukanie użytkowników (SELECT z warunkiem LIKE oraz filtrem NOT dla samego siebie).
+  // Wykorzystujemy klauzulę "select", aby nie przesyłać z bazy danych wrażliwych informacji, takich jak hasze haseł.
+  // "take: 5" ogranicza liczbę zwracanych wierszy do maksymalnie 5.
+  const users = await db.user.findMany({
+    where: {
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { email: { contains: query, mode: "insensitive" } },
+      ],
+      NOT: { id: meId },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+    take: 5,
+  });
+
+  // Jeśli brak pasujących użytkowników, przerywamy dalsze odpytywanie bazy
+  if (users.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const userIds = users.map((u) => u.id);
+
+  // Wyszukanie relacji znajomości dla zidentyfikowanych użytkowników.
+  // Użycie klauzuli IN na kolumnach userId oraz friendId pozwala na pobranie wszystkich potrzebnych statusów relacji
+  // za pomocą jednego zapytania SQL, zamiast wykonywania zapytania w pętli N+1.
+  const friendships = await db.friend.findMany({
+    where: {
+      OR: [
+        {
+          userId: meId,
+          friendId: { in: userIds },
+        },
+        {
+          userId: { in: userIds },
+          friendId: meId,
+        },
+      ],
+    },
+  });
+
+  // Pomocnicza funkcja do określania statusu relacji w pamięci aplikacji (in-memory processing)
+  function getStatus(otherUserId: number) {
+    const relation = friendships.find(
+      (f) =>
+        (f.userId === meId && f.friendId === otherUserId) ||
+        (f.userId === otherUserId && f.friendId === meId)
+    );
+
+    if (!relation) return "NONE";
+
+    if (relation.status === "ACCEPTED") {
+      return "ACCEPTED";
+    }
+
+    if (relation.userId === meId) {
+      return "PENDING_SENT";
+    }
+
+    return "PENDING_RECEIVED";
+  }
+
+  // Mapowanie użytkowników na strukturę wynikową zawierającą dynamiczny status relacji znajomości
+  const result = users.map((u) => ({
+    ...u,
+    friendshipStatus: getStatus(u.id),
+  }));
+
+  return NextResponse.json(result);
+}
+```

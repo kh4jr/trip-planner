@@ -1,0 +1,154 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/auth/[...nextauth]/route.ts` odpowiada za uwierzytelnianie użytkowników z użyciem metody logowania przez e-mail i hasło (Credentials Provider). Główne interakcje z bazą danych obejmują wyszukiwanie konta użytkownika w celu weryfikacji hasła (SELECT na tabeli `User`) oraz weryfikację i potencjalne leniwe tworzenie profilu uczestnika powiązanego z użytkownikiem (SELECT i ewentualnie INSERT na tabeli `Participant`).
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Wyszukiwanie rekordu użytkownika po e-mailu (`db.user.findUnique`) oraz profilu uczestnika po identyfikatorze użytkownika (`db.participant.findUnique`).
+- **Insert (Create)**: Zapis nowego uczestnika (`db.participant.create`) w przypadku braku profilu przy poprawnym zalogowaniu.
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Wyszukiwanie użytkownika (`db.user.findUnique`)**
+   - Prisma:
+     ```typescript
+     db.user.findUnique({
+       where: { email: credentials.email },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "email", "password", "name"
+     FROM "User"
+     WHERE "email" = $1
+     LIMIT 1;
+     ```
+   - *Wyjaśnienie*: Wyszukuje rekord w tabeli `"User"` na podstawie kolumny `"email"`. Ponieważ kolumna `"email"` posiada indeks unikalny B-Tree (zadeklarowany przez `@unique` w Prisma), wyszukiwanie przebiega niezwykle wydajnie poprzez wyszukiwanie w indeksie (Index Scan).
+
+2. **Sprawdzanie obecności uczestnika (`db.participant.findUnique`)**
+   - Prisma:
+     ```typescript
+     db.participant.findUnique({
+       where: { userId: user.id },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "name", "email", "role", "userId"
+     FROM "Participant"
+     WHERE "userId" = $1
+     LIMIT 1;
+     ```
+   - *Wyjaśnienie*: Odpytuje tabelę `"Participant"` o profil powiązany z zalogowanym użytkownikiem. Kolumna `"userId"` w tabeli `"Participant"` posiada indeks unikalny, dzięki czemu PostgreSQL potrafi natychmiastowo zlokalizować pasujący rekord.
+
+3. **Tworzenie profilu uczestnika (`db.participant.create`)**
+   - Prisma:
+     ```typescript
+     db.participant.create({
+       data: { userId: user.id },
+     })
+     ```
+   - SQL:
+     ```sql
+     INSERT INTO "Participant" ("userId", "name", "email", "role")
+     VALUES ($1, 'Uczestnik', '', 'member')
+     RETURNING "id", "name", "email", "role", "userId";
+     ```
+   - *Wyjaśnienie*: Wstawia nowy rekord do tabeli `"Participant"`. Ponieważ w schemacie dla pól `"name"`, `"email"` oraz `"role"` zdefiniowane są wartości domyślne, Prisma generuje zapytanie INSERT z tymi wartościami. Integralność referencyjna jest sprawdzana na poziomie klucza obcego `"userId"`, który musi odpowiadać istniejącemu identyfikatorowi w tabeli `"User"`.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import NextAuth from "next-auth";
+import { AuthOptions, DefaultSession } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { db } from "@/lib/db";
+import bcrypt from "bcrypt";
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"];
+  }
+}
+
+export const authOptions: AuthOptions = {
+  providers: [
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        // Podstawowa walidacja wejściowych danych uwierzytelniających.
+        if (!credentials?.email || !credentials?.password) return null;
+
+        // Operacja SELECT wykonywana na unikalnym indeksie "User_email_key".
+        // Pozwala to na szybką autoryzację nawet przy dużej liczbie rekordów w bazie.
+        const user = await db.user.findUnique({
+          where: { email: credentials.email },
+        });
+
+        // Weryfikacja obecności użytkownika oraz istnienia hasła w bazie.
+        if (!user || !user.password) return null;
+
+        // Porównanie zahaszowanego hasła w bazie z hasłem podanym przez użytkownika za pomocą bcrypt.
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
+        if (!isPasswordValid) return null;
+
+        // Sprawdzenie, czy zalogowany użytkownik ma już przypisany profil uczestnika.
+        // Wykorzystuje unikalny indeks "Participant_userId_key".
+        const participant = await db.participant.findUnique({
+          where: { userId: user.id },
+        });
+
+        // Samonaprawa / leniwa inicjalizacja profilu uczestnika:
+        // Jeżeli użytkownik zalogował się poprawnie, ale nie posiada rekordu uczestnika,
+        // jest on tworzony automatycznie w celu zachowania spójności relacji aplikacyjnych.
+        // Wymaga to operacji INSERT z poprawnym powiązaniem klucza obcego "userId".
+        if (!participant) {
+          await db.participant.create({
+            data: { userId: user.id },
+          });
+        }
+
+        // Zwrócenie danych profilu do sesji NextAuth.
+        return {
+          id: user.id.toString(),
+          email: user.email,
+          name: user.name,
+        };
+      },
+    }),
+  ],
+  callbacks: {
+    // Przekazanie identyfikatora użytkownika do tokenu JWT w celu zachowania tożsamości.
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    // Przekazanie identyfikatora użytkownika z tokenu JWT do sesji dostępnej w aplikacji.
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+      }
+      return session;
+    },
+  },
+  session: { strategy: "jwt" },
+  pages: { signIn: "/" },
+  secret: process.env.NEXTAUTH_SECRET,
+};
+
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
+```

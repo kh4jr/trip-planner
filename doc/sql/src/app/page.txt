@@ -1,0 +1,163 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `page.tsx` jest głównym punktem wejścia aplikacji (stroną główną), działającym jako Server Component wymuszający dynamiczne renderowanie (`force-dynamic`). Odpowiada za pobranie z bazy danych pełnego zestawu informacji o wyjazdach oraz dostępnych uczestnikach w celu przekazania ich do interaktywnego komponentu klienckiego `TripManager`.
+
+Identyfikacja operacji CRUD:
+- **Select (Odczyt)**:
+  - Zapytanie `db.trip.findMany` pobierające wszystkie wycieczki z jednoczesnym chętnym ładowaniem (Eager Loading) relacji: uczestników, wydatków, notatek, aktywności, przedmiotów, zdjęć oraz właściciela, posortowane rosnąco według daty rozpoczęcia (`startDate`).
+  - Zapytanie `db.participant.findMany` pobierające listę wszystkich uczestników wraz z danymi powiązanego konta użytkownika (`User`), posortowane alfabetycznie po nazwie użytkownika.
+
+Interpretacja SQL:
+1. **Pobieranie wyjazdów (`db.trip.findMany`)**: Aby zapobiec problemowi zapytań $N+1$ i uniknąć generowania iloczynu kartezjańskiego (co nastąpiłoby przy jednym potężnym złączeniu `JOIN`), Prisma ORM wykonuje zapytanie główne oraz serię zapytań pomocniczych z filtrem `IN`:
+   ```sql
+   -- Pobranie wycieczek posortowanych rosnąco
+   SELECT "id", "name", "destination", "startDate", "endDate", "ownerId", "description", "location", "createdAt" 
+   FROM "Trip" 
+   ORDER BY "startDate" ASC;
+   
+   -- Pobranie powiązanych relacji (dla zidentyfikowanych tripId):
+   SELECT * FROM "Expense" WHERE "tripId" IN ($1, $2, ...);
+   SELECT * FROM "Note" WHERE "tripId" IN ($1, $2, ...);
+   SELECT * FROM "Activity" WHERE "tripId" IN ($1, $2, ...);
+   SELECT * FROM "TripItem" WHERE "tripId" IN ($1, $2, ...);
+   SELECT * FROM "TripImage" WHERE "tripId" IN ($1, $2, ...);
+   ```
+   Dla relacji wiele-do-wielu (uczestnicy) Prisma wykonuje dodatkowe złączenie z tabelą łączącą:
+   ```sql
+   SELECT "p".*, "j"."B" AS "tripId" 
+   FROM "Participant" AS "p"
+   INNER JOIN "_ParticipantToTrip" AS "j" ON "j"."A" = "p"."id"
+   WHERE "j"."B" IN ($1, $2, ...);
+   ```
+2. **Pobieranie uczestników (`db.participant.findMany`)**: Sortowanie według pola powiązanego modelu `user.name` wymaga złączenia `LEFT JOIN`:
+   ```sql
+   SELECT "p"."id", "p"."name", "p"."email", "p"."role", "p"."userId"
+   FROM "Participant" AS "p"
+   LEFT JOIN "User" AS "u" ON "p"."userId" = "u"."id"
+   ORDER BY "u"."name" ASC;
+   ```
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { db } from "@/lib/db";
+import TripManager from "@/components/TripManager";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
+import { FullTrip } from "@/types/fullTrip";
+
+// Wymuszenie dynamicznego renderowania komponentu przy każdym żądaniu HTTP (brak statycznego generowania strony podczas budowania).
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  // Pobranie sesji użytkownika z mechanizmu NextAuth w celu identyfikacji bieżącego kontekstu bezpieczeństwa.
+  const session = await getServerSession(authOptions);
+
+  const rawUserId = session?.user?.id;
+  const userId = rawUserId ? Number(rawUserId) : null;
+
+  // Pobranie z bazy danych wszystkich rekordów podróży.
+  // Zastosowanie Eager Loading ("include") eliminuje potrzebę wykonywania kolejnych zapytań dla powiązanych encji zależnych.
+  // Klauzula "orderBy" sortuje rekordy na poziomie bazy danych przy użyciu indeksu (lub sortowania w pamięci), co optymalizuje wydajność.
+  const allTripsData = await db.trip.findMany({
+    include: {
+      participants: {
+        include: {
+          user: true, // Zagnieżdżona relacja 1-1 użytkownika przypisanego do profilu uczestnika.
+        },
+      },
+      expenses: true,   // Relacja 1-wiele: wszystkie wydatki przypisane do Trip.
+      notes: true,      // Relacja 1-wiele: notatki i zadania wyjazdu.
+      activities: true, // Relacja 1-wiele: punkty harmonogramu wycieczki.
+      items: true,      // Relacja 1-wiele: przedmioty z listy spakowania.
+      images: true,     // Relacja 1-wiele: galeria zdjęć wycieczki.
+      owner: true,      // Relacja 1-wiele: profil właściciela wyjazdu (User).
+    },
+    orderBy: {
+      startDate: "asc", // Sortowanie rosnące według daty startu podróży.
+    },
+  });
+
+  // Pobranie listy wszystkich zarejestrowanych uczestników w systemie.
+  // Umożliwia to przypisywanie istniejących profili do nowych lub edytowanych wycieczek.
+  const allAvailableParticipants = await db.participant.findMany({
+    include: {
+      user: true, // Dołączenie danych użytkownika (User) w celu pobrania nazwy konta i adresu e-mail.
+    },
+    orderBy: {
+      user: {
+        name: "asc", // Sortowanie po nazwie powiązanego konta użytkownika (generuje LEFT JOIN).
+      },
+    },
+  });
+
+  // Mapowanie surowych danych z Prisma na jednolity interfejs FullTrip wymagany przez interfejs użytkownika.
+  // Jeżeli uczestnik nie posiada powiązanego konta User (jest gościem), tworzony jest dla niego wirtualny identyfikator ujemny.
+  const tripsFromDb: FullTrip[] = allTripsData.map((trip) => ({
+    id: trip.id,
+    name: trip.name,
+    description: trip.description,
+    location: trip.location,
+    destination: trip.destination,
+    startDate: new Date(trip.startDate),
+    endDate: new Date(trip.endDate),
+    ownerId: trip.ownerId,
+    createdAt: trip.createdAt,
+    participants: (trip.participants ?? []).map((p) => ({
+      id: p.id,
+      role: p.role,
+      user: p.user ? {
+        id: p.user.id,
+        name: p.user.name,
+        email: p.user.email,
+      } : {
+        id: -p.id,
+        name: p.name,
+        email: p.email,
+      }
+    })),
+    expenses: trip.expenses ?? [],
+    items: trip.items ?? [],
+    activities: trip.activities ?? [],
+    notes: trip.notes ?? [],
+    images: trip.images ?? [],
+    todos: [],
+  }));
+
+  // Mapowanie listy wszystkich dostępnych osób na format akceptowalny przez interfejs formularza wycieczki.
+  const allAvailableParticipantsMapped = allAvailableParticipants.map((p) => ({
+    id: p.id,
+    role: p.role,
+    user: p.user ? {
+      id: p.user.id,
+      name: p.user.name,
+      email: p.user.email,
+    } : {
+      id: -p.id,
+      name: p.name,
+      email: p.email,
+    }
+  }));
+
+  // Renderowanie widoku strony głównej i wstrzyknięcie danych do komponentu dynamicznego TripManager.
+  return (
+    <main className="min-h-screen flex flex-col bg-white">
+      <div className="w-full !px-6 lg:!px-8 npxpy-4">
+        <TripManager
+          initialTrips={tripsFromDb}
+          session={session}
+          allAvailablePeople={allAvailableParticipantsMapped}
+        />
+      </div>
+
+      <footer className="p-10 mt-auto">
+        <p className="text-blue-500 text-xs font-black uppercase tracking-widest">
+          Trip Planner Pro • 2026
+        </p>
+      </footer>
+    </main>
+  );
+}
+```

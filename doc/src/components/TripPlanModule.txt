@@ -1,0 +1,90 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) prezentujący listę zaplanowanych aktywności w ramach harmonogramu wyjazdu. Udostępnia również interfejs do wyzwalania akcji dodawania oraz usuwania poszczególnych aktywności.
+- **Typ komponentu**: Client Component (komponent kliencki), realizujący obsługę zdarzeń kliknięcia oraz dialogi systemowe przeglądarki (`window.confirm`) w celu potwierdzania krytycznych operacji usunięcia.
+- **Definicja Props**:
+  - `activities`: Tablica zaplanowanych zdarzeń/aktywności typu `Activity` posiadających właściwości takie jak nazwa, czas oraz opcjonalna lokalizacja.
+  - `onAddActivity`: Funkcja callback wywoływana po kliknięciu przycisku dodawania aktywności, delegująca otwarcie formularza do rodzica.
+  - `onDeleteActivity`: Funkcja callback do usuwania danej aktywności z harmonogramu za pomocą jej ID.
+- **Główna Logika Biznesowa**:
+  - Renderowanie listy: W przypadku pustej listy harmonogramu, renderuje tekst pomocniczy (fallback). W przeciwnym razie mapuje aktywności na elementy listy z wyświetleniem godziny rozpoczęcia, nazwy i lokalizacji.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+
+import { Activity } from "@/lib/data"; 
+
+// Interfejs opisujący typy parametrów wejściowych (Props) dla modułu planu wyjazdu
+interface TripPlanModuleProps {
+  activities: Activity[];
+  onAddActivity: () => void; 
+  onDeleteActivity: (id: number) => void; 
+}
+
+export default function TripPlanModule({ 
+    activities, 
+    onAddActivity, 
+    onDeleteActivity 
+}: TripPlanModuleProps) {
+  
+  return (
+    <div>
+      <h3 className="text-xl font-semibold text-gray-700 mb-4">Zaplanowane Aktywności</h3>
+      
+      {/* Warunkowe renderowanie listy lub etykiety informującej o braku zaplanowanych wydarzeń */}
+      {activities.length > 0 ? (
+        <ul className="space-y-3">
+          {activities.map(activity => (
+            <li 
+                key={activity.id} 
+                className="p-3 border rounded-lg bg-gray-50 flex justify-between items-center transition duration-150 ease-in-out hover:shadow-sm"
+            >
+              <div className="flex-1">
+                {/* Prezentacja godziny oraz nazwy aktywności */}
+                <span className="font-medium text-gray-900">{activity.time}:</span> {activity.name}
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {/* Wyświetlanie lokalizacji aktywności z wartością domyślną w przypadku jej braku */}
+                <span className="text-sm text-blue-500 bg-blue-50 py-1 px-2 rounded-full">
+                  {activity.location || "Brak lokalizacji"}
+                </span>
+                
+                {/* Przycisk usuwania aktywności z potrójną weryfikacją (okno confirm przeglądarki) */}
+                <button
+                  onClick={() => {
+                     if (window.confirm(`Czy na pewno usunąć "${activity.name}"?`)) {
+                          onDeleteActivity(activity.id);
+                     }
+                  }}
+                  className="text-red-500 hover:text-700 p-1 rounded-full hover:bg-red-100 transition"
+                  title="Usuń aktywność"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-gray-400 italic">Brak zaplanowanych aktywności. Dodaj pierwszą!</p>
+      )}
+
+      {/* Przycisk wyzwalający callback onAddActivity dodawania nowego rekordu do planu */}
+      <div className="mt-6">
+        <button 
+          onClick={onAddActivity}
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+        >
+          + Dodaj Aktywność do Planu
+        </button>
+      </div>
+    </div>
+  );
+}
+```

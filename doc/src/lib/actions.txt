@@ -1,0 +1,206 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/lib/actions.ts` stanowi warstwę Server Actions aplikacji Next.js (zgodnie z dyrektywą `'use server'`). Server Actions to kluczowy element architektury Next.js App Router, pozwalający na bezpośrednie wywoływanie funkcji serwerowych z poziomu komponentów klienckich (Client Components) oraz formularzy (HTML Forms), eliminując potrzebę ręcznego tworzenia tradycyjnych punktów końcowych API (REST API routes).
+
+Główne odpowiedzialności i mechanizmy biznesowe tego modułu obejmują:
+1. **Zarządzanie Podróżami (`createTrip`)**: Asynchroniczne tworzenie relacyjnego modelu podróży w bazie danych wraz z jednoczesnym przypisywaniem listy uczestników (powiązanie jeden-do-wielu).
+2. **Rozliczanie Wydatków (`addExpense`, `deleteExpense`)**: Obsługa logiki finansowej podróży poprzez dodawanie i usuwanie poszczególnych pozycji kosztowych przypisanych do konkretnej podróży.
+3. **Prowadzenie Notatek (`addNote`, `toggleNote`, `deleteNote`)**: Logika dodawania notatek tekstowych oraz oznaczania ich jako przeczytane/zrealizowane.
+4. **Zarządzanie Listą Zadań (`addTodoAction`, `toggleTodoAction`, `deleteTodoAction`)**: Integracja listy zadań (todo) powiązanej z planowaniem wyjazdu.
+5. **Inwalidacja Cache i Reaktywność UI (`revalidatePath`)**: Po każdej operacji modyfikującej bazę danych (mutacji), wywoływana jest funkcja `revalidatePath("/")`. Wymusza to na serwerze Next.js ponowne wyrenderowanie i odświeżenie pamięci podręcznej dla ścieżki głównej, dzięki czemu użytkownik natychmiast widzi zaktualizowane dane bez potrzeby ręcznego odświeżania strony.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kompletny kod źródłowy pliku `actions.ts` z wplecionymi komentarzami akademickimi:
+
+```typescript
+// Dyrektywa nakazująca kompilatorowi Next.js traktowanie wszystkich wyeksportowanych funkcji w tym pliku jako Server Actions.
+// Oznacza to, że funkcje te będą wykonywane wyłącznie po stronie serwera, a klient otrzyma jedynie bezpieczny endpoint RPC.
+'use server'
+
+import { db } from './db'
+import { revalidatePath } from 'next/cache'
+
+// Definicja interfejsu opisującego strukturę danych przesyłanych podczas tworzenia nowej podróży.
+export interface TripFormData {
+  name: string;
+  destination: string;
+  location?: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  participants: {
+    name: string;
+    email?: string;
+    role?: string;
+  }[];
+}
+
+/**
+ * Tworzy nową podróż w bazie danych i wiąże ją z użytkownikiem tworzącym (właścicielem) oraz uczestnikami.
+ * @param data Dane formularza podróży.
+ * @param ownerId Identyfikator właściciela podróży.
+ */
+export async function createTrip(
+  data: TripFormData,
+  ownerId: number
+) {
+  try {
+    // Użycie Prisma Client do utworzenia rekordu podróży (Trip).
+    // Transakcja obejmuje zagnieżdżone tworzenie (create) uczestników (participants), co gwarantuje spójność referencyjną.
+    const trip = await db.trip.create({
+      data: {
+        name: data.name,
+        destination: data.destination,
+        location: data.location || null, // Zastąpienie niezdefiniowanych wartości wartością null dla bazy SQL
+        description: data.description || null,
+        startDate: new Date(data.startDate), // Konwersja łańcucha znaków daty na obiekt Date
+        endDate: new Date(data.endDate),
+        ownerId: ownerId,
+
+        // Tworzenie relacji jeden-do-wielu: automatyczne powiązanie uczestników z tą podróżą
+        participants: {
+          create: data.participants.map((p) => ({
+            name: p.name,
+            email: p.email || "",
+            role: p.role || "member",
+          })),
+        },
+      },
+    });
+
+    // Inwalidacja pamięci podręcznej dla ścieżki głównej. Next.js przebuduje stronę w tle (on-demand revalidation).
+    revalidatePath("/");
+    return trip;
+  } catch (error) {
+    console.error("Błąd bazy:", error);
+    throw new Error("Nie udało się utworzyć podróży");
+  }
+}
+
+/**
+ * Dodaje nowy wydatek finansowy powiązany z podróżą.
+ */
+export async function addExpense(
+  tripId: number,
+  data: {
+    description: string;
+    amount: number;
+    paidBy: string;
+    category: string;
+  }
+) {
+  // Wprowadzenie rekordu wydatku do tabeli Expense z powiązaniem do tripId.
+  const expense = await db.expense.create({
+    data: {
+      description: data.description,
+      amount: data.amount,
+      paidBy: data.paidBy,
+      category: data.category,
+      tripId: tripId,
+    },
+  });
+
+  // Wymuszenie odświeżenia danych na stronie głównej w celu aktualizacji salda wydatków.
+  revalidatePath("/");
+  return expense;
+}
+
+/**
+ * Usuwa wydatek z bazy danych na podstawie jego unikalnego identyfikatora.
+ */
+export async function deleteExpense(expenseId: number) {
+  try {
+    await db.expense.delete({
+      where: { id: expenseId },
+    });
+    revalidatePath('/'); // Aktualizacja widoku podróży po usunięciu wydatku
+  } catch (error) {
+    console.error("Błąd usuwania wydatku:", error);
+    throw new Error("Nie udało się usunąć wydatku");
+  }
+}
+
+/**
+ * Tworzy nową notatkę tekstową dla określonej podróży.
+ */
+export async function addNote(
+  tripId: number,
+  content: string
+) {
+  const note = await db.note.create({
+    data: {
+      content,
+      tripId,
+    },
+  });
+
+  revalidatePath("/");
+  return note;
+}
+
+/**
+ * Przełącza stan ukończenia (np. odznaczenie/zaznaczenie jako wykonane) notatki.
+ */
+export async function toggleNote(noteId: number, isCompleted: boolean) {
+  await db.note.update({
+    where: { id: noteId },
+    data: { isCompleted },
+  });
+  revalidatePath('/');
+}
+
+/**
+ * Usuwa notatkę z bazy danych.
+ */
+export async function deleteNote(noteId: number) {
+  await db.note.delete({ where: { id: noteId } });
+  revalidatePath('/');
+}
+
+/**
+ * Dodaje nowe zadanie (todo item) do listy zadań podróży.
+ */
+export async function addTodoAction(
+  tripId: number,
+  name: string
+) {
+  try {
+    const todo = await db.tripItem.create({
+      data: {
+        name,
+        tripId,
+        isCompleted: false, // Domyślnie nowe zadanie jest nieukończone
+      },
+    });
+
+    revalidatePath('/');
+    return todo;
+  } catch (error) {
+    console.error("Błąd dodawania zadania:", error);
+    throw new Error("Nie udało się zapisać zadania");
+  }
+}
+
+/**
+ * Zmienia stan ukończenia zadania na liście zadań podróży.
+ */
+export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
+  await db.tripItem.update({
+    where: { id: todoId },
+    data: { isCompleted }
+  });
+  revalidatePath('/');
+}
+
+/**
+ * Usuwa zadanie (todo item) z bazy danych.
+ */
+export async function deleteTodoAction(todoId: number) {
+  await db.tripItem.delete({ where: { id: todoId } });
+  revalidatePath('/');
+}
+```
+---

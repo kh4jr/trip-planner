@@ -1,0 +1,60 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/auth/register/route.ts` pełni funkcję **API Route Endpoint** w strukturze Next.js, odpowiadając za rejestrację nowych użytkowników w systemie. Obsługuje on wyłącznie zapytania metodą **POST**:
+1. **Parsowanie i odczyt danych**: Odczytuje z ciała zapytania przesłane dane rejestracyjne: adres email, nazwę użytkownika oraz hasło.
+2. **Weryfikacja unikalności e-maila**: Pyta bazę danych poprzez Prisma ORM czy podany adres e-mail jest już zajęty przez innego użytkownika. Jeśli tak, zwraca status `400 Bad Request` wraz z odpowiednim komunikatem.
+3. **Haszowanie hasła**: Wykorzystuje bibliotekę `bcrypt` do wygenerowania bezpiecznego haszu hasła (metodą salting z parametrem 10). Zapobiega to przechowywaniu haseł w czystym tekście w bazie danych.
+4. **Utworzenie konta**: Zapisuje nowego użytkownika w bazie danych z zahaszowanym hasłem i zwraca status sukcesu `201 Created` z informacją o nowo utworzonym koncie.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+import bcrypt from "bcrypt";
+
+/**
+ * Endpoint POST - Rejestracja nowego użytkownika w systemie.
+ * Hasło użytkownika jest przed zapisem szyfrowane za pomocą bcrypt.
+ * 
+ * @param req Obiekt żądania HTTP
+ * @returns Status sukcesu z obiektem użytkownika lub błąd walidacji/serwera
+ */
+export async function POST(req: Request) {
+  try {
+    // Pobranie danych wejściowych z żądania w formacie JSON
+    const body = await req.json();
+    const { email, name, password } = body;
+
+    // Sprawdzenie, czy w bazie danych istnieje już użytkownik z podanym adresem e-mail
+    const existingUser = await db.user.findUnique({
+      where: { email }
+    });
+
+    // Jeżeli użytkownik już istnieje, zwracany jest błąd 400 (Bad Request) w celu uniknięcia duplikacji
+    if (existingUser) {
+      return NextResponse.json({ message: "Użytkownik o tym mailu już istnieje" }, { status: 400 });
+    }
+
+    // Generowanie bezpiecznego hashu hasła z kosztem (rounds) równym 10
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Zapisanie nowego rekordu użytkownika w bazie danych
+    const newUser = await db.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword, // Zapisujemy wyłącznie zaszyfrowane hasło
+      },
+    });
+
+    // Zwrócenie odpowiedzi o pomyślnym utworzeniu zasobu (201 Created)
+    return NextResponse.json({ message: "Konto założone!", user: { email: newUser.email } }, { status: 201 });
+
+  } catch (error) {
+    // Obsługa nieprzewidzianych błędów po stronie serwera (np. brak połączenia z bazą danych)
+    return NextResponse.json({ message: "Błąd serwera" }, { status: 500 });
+  }
+}
+```

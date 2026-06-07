@@ -1,0 +1,366 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+*Ten rozdział został napisany w języku polskim.*
+
+**Podsumowanie operacji bazodanowych w pliku:**
+Plik `src/app/api/friends/route.ts` kompleksowo obsługuje relacje znajomości (model `Friend`). Umożliwia pobieranie listy zaakceptowanych znajomych oraz obliczanie liczby wspólnych wyjazdów (GET), wysyłanie nowego zaproszenia (POST), usuwanie znajomego lub odrzucanie zaproszenia (DELETE) oraz akceptację oczekującego zaproszenia (PUT). Występują tu wszystkie cztery operacje CRUD.
+
+**Identyfikacja operacji CRUD:**
+- **Select (Read)**: Wyszukiwanie istniejących relacji znajomości, pobieranie wycieczek powiązanych z uczestnikami oraz sprawdzanie duplikatów przed zaproszeniem (`GET`, `POST`, `PUT`).
+- **Insert (Create)**: Tworzenie nowej relacji znajomości ze statusem `"PENDING"` (`POST`).
+- **Update (Update)**: Aktualizacja statusu relacji znajomości na `"ACCEPTED"` po zaakceptowaniu zaproszenia (`PUT`).
+- **Delete (Delete)**: Usuwanie relacji (odrzucenie zaproszenia lub usunięcie znajomego) za pomocą `deleteMany` (`DELETE`).
+
+**Interpretacja SQL dla metod Prisma Client:**
+1. **Pobieranie znajomości (`db.friend.findMany` w GET)**
+   - Prisma:
+     ```typescript
+     db.friend.findMany({
+       where: {
+         status: "ACCEPTED",
+         OR: [{ userId: meId }, { friendId: meId }],
+       },
+       include: { user: true, friend: true },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT 
+       f.id, f."userId", f."friendId", f.status,
+       u.id AS "u_id", u.name AS "u_name", u.email AS "u_email",
+       fr.id AS "fr_id", fr.name AS "fr_name", fr.email AS "fr_email"
+     FROM "Friend" AS f
+     INNER JOIN "User" AS u ON f."userId" = u.id
+     INNER JOIN "User" AS fr ON f."friendId" = fr.id
+     WHERE f.status = 'ACCEPTED' AND (f."userId" = $1 OR f."friendId" = $1);
+     ```
+   - *Wyjaśnienie*: Zapytanie wyszukuje zaakceptowane znajomości użytkownika. Łączy tabelę `"Friend"` z tabelą `"User"` podwójnie (dla nadawcy `userId` i odbiorcy `friendId`), aby pobrać pełne profile obu użytkowników.
+
+2. **Pobieranie wspólnych wycieczek (`db.trip.findMany` w GET)**
+   - Prisma:
+     ```typescript
+     db.trip.findMany({
+       where: { participants: { some: { userId: meId } } },
+       select: { id: true, participants: { select: { userId: true } } }
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT t.id, p."userId"
+     FROM "Trip" AS t
+     JOIN "_ParticipantToTrip" AS pt ON pt."B" = t.id
+     JOIN "Participant" AS p ON pt."A" = p.id
+     WHERE t.id IN (
+       SELECT sub_t.id
+       FROM "Trip" AS sub_t
+       JOIN "_ParticipantToTrip" AS sub_pt ON sub_pt."B" = sub_t.id
+       JOIN "Participant" AS sub_p ON sub_pt."A" = sub_p.id
+       WHERE sub_p."userId" = $1
+     );
+     ```
+   - *Wyjaśnienie*: Wyszukuje wycieczki, w których zalogowany użytkownik jest uczestnikiem. Ze względu na relację wiele-do-wielu wykorzystywana jest tabela łącząca `"_ParticipantToTrip"`. Zapytanie pobiera identyfikatory tych wycieczek oraz identyfikatory wszystkich pozostałych uczestników.
+
+3. **Sprawdzanie duplikatów znajomości (`db.friend.findFirst` w POST)**
+   - Prisma:
+     ```typescript
+     db.friend.findFirst({
+       where: {
+         OR: [
+           { userId, friendId },
+           { userId: friendId, friendId: userId },
+         ],
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     SELECT "id", "userId", "friendId", "status"
+     FROM "Friend"
+     WHERE ("userId" = $1 AND "friendId" = $2) OR ("userId" = $2 AND "friendId" = $1)
+     LIMIT 1;
+     ```
+   - *Wyjaśnienie*: Sprawdza, czy relacja między dwoma użytkownikami została już wcześniej zainicjalizowana, bez względu na to, kto był nadawcą, a kto odbiorcą.
+
+4. **Tworzenie zaproszenia (`db.friend.create` w POST)**
+   - Prisma:
+     ```typescript
+     db.friend.create({
+       data: { userId, friendId, status: "PENDING" }
+     })
+     ```
+   - SQL:
+     ```sql
+     INSERT INTO "Friend" ("userId", "friendId", "status")
+     VALUES ($1, $2, 'PENDING')
+     RETURNING "id", "userId", "friendId", "status";
+     ```
+   - *Wyjaśnienie*: Wstawia nowy rekord do tabeli `"Friend"`, rozpoczynając relację w stanie `'PENDING'`.
+
+5. **Usuwanie relacji (`db.friend.deleteMany` w DELETE - tryb "friend")**
+   - Prisma:
+     ```typescript
+     db.friend.deleteMany({
+       where: {
+         status: "ACCEPTED",
+         OR: [
+           { userId: meId, friendId },
+           { userId: friendId, friendId: meId },
+         ],
+       },
+     })
+     ```
+   - SQL:
+     ```sql
+     DELETE FROM "Friend"
+     WHERE "status" = 'ACCEPTED' AND (("userId" = $1 AND "friendId" = $2) OR ("userId" = $2 AND "friendId" = $1));
+     ```
+   - *Wyjaśnienie*: Usuwa powiązanie znajomych z bazy danych, niezależnie od tego, która strona wysłała pierwotne zaproszenie.
+
+6. **Akceptacja zaproszenia (`db.friend.update` w PUT)**
+   - Prisma:
+     ```typescript
+     db.friend.update({
+       where: { id: invite.id },
+       data: { status: "ACCEPTED" },
+     })
+     ```
+   - SQL:
+     ```sql
+     UPDATE "Friend"
+     SET "status" = 'ACCEPTED'
+     WHERE "id" = $1
+     RETURNING "id", "userId", "friendId", "status";
+     ```
+   - *Wyjaśnienie*: Zmienia status znajomości na `'ACCEPTED'` przy użyciu operacji UPDATE. Wyszukanie wiersza następuje bezpośrednio po kluczu głównym `"id"`.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+/**
+ * Metoda GET pobierająca listę znajomych zalogowanego użytkownika.
+ * Oblicza również liczbę wspólnych wycieczek z każdym ze znajomych.
+ */
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!meId) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  // Operacja SELECT pobierająca wszystkie zaakceptowane relacje znajomości.
+  // Złączenia (include) dołączają dane obu użytkowników celem łatwej identyfikacji partnera relacji.
+  const friends = await db.friend.findMany({
+    where: {
+      status: "ACCEPTED",
+      OR: [{ userId: meId }, { friendId: meId }],
+    },
+    include: {
+      user: true,
+      friend: true,
+    },
+  });
+
+  // Operacja SELECT pobierająca wszystkie wycieczki, w których uczestniczy zalogowany użytkownik.
+  // Wykorzystuje niejawną tabelę łączącą "_ParticipantToTrip" wygenerowaną przez Prisma dla relacji many-to-many.
+  const myTrips = await db.trip.findMany({
+    where: {
+      participants: {
+        some: {
+          userId: meId,
+        },
+      },
+    },
+    select: {
+      id: true,
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  // Przetwarzanie i mapowanie wyników w pamięci aplikacji.
+  // Dla każdej relacji określa się, który z rekordów (user czy friend) jest znajomym zalogowanego użytkownika.
+  // Następnie obliczana jest liczba wspólnych wycieczek.
+  const result = friends.map((f) => {
+    const other =
+      f.userId === meId ? f.friend : f.user;
+
+    const tripsTogether = myTrips.filter((trip) =>
+      trip.participants.some(
+        (p) => p.userId === other.id
+      )
+    ).length;
+
+    return {
+      id: other.id,
+      name: other.name,
+      email: other.email,
+      tripsTogether,
+    };
+  });
+
+  return NextResponse.json(result);
+}
+
+/**
+ * Metoda POST obsługująca wysyłanie zaproszenia do znajomych.
+ * Weryfikuje brak istniejącej relacji (SELECT) przed dodaniem wpisu (INSERT).
+ */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
+  }
+
+  const { friendId } = await req.json();
+
+  // Zabezpieczenie przed zaproszeniem samego siebie lub pustym parametrem.
+  if (!friendId || friendId === userId) {
+    return NextResponse.json(
+      { error: "Nieprawidłowy friendId" },
+      { status: 400 }
+    );
+  }
+
+  // Wyszukanie za pomocą SELECT, czy jakakolwiek relacja (oczekująca lub zaakceptowana) już istnieje między tą parą.
+  const existing = await db.friend.findFirst({
+    where: {
+      OR: [
+        { userId, friendId },
+        { userId: friendId, friendId: userId },
+      ],
+    },
+  });
+
+  // Jeśli istnieje relacja, zwracany jest konflikt (409) chroniący unikalność bazy danych.
+  if (existing) {
+    return NextResponse.json(
+      { error: "Relacja już istnieje" },
+      { status: 409 } 
+    );
+  }
+
+  // Operacja INSERT tworząca rekord ze statusem "PENDING".
+  const invite = await db.friend.create({
+    data: {
+      userId,
+      friendId,
+      status: "PENDING",
+    },
+  });
+
+  return NextResponse.json(invite);
+}
+
+/**
+ * Metoda DELETE obsługująca odrzucanie zaproszeń lub usuwanie ze znajomych.
+ * Realizuje operacje DELETE za pomocą deleteMany z filtrem warunkowym.
+ */
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  const meId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!meId) {
+    return NextResponse.json({ error: "Brak auth" }, { status: 401 });
+  }
+
+  const { friendId, mode } = await req.json();
+
+  if (!friendId || !mode) {
+    return NextResponse.json(
+      { error: "Brak danych" },
+      { status: 400 }
+    );
+  }
+
+  // Przypadek 1: Odrzucenie lub anulowanie oczekującego zaproszenia (status "PENDING").
+  if (mode === "invite") {
+    await db.friend.deleteMany({
+      where: {
+        userId: friendId,   
+        friendId: meId,     
+        status: "PENDING",
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  // Przypadek 2: Usunięcie ze znajomych w pełni zaakceptowanej relacji (status "ACCEPTED").
+  if (mode === "friend") {
+    await db.friend.deleteMany({
+      where: {
+        status: "ACCEPTED",
+        OR: [
+          { userId: meId, friendId },
+          { userId: friendId, friendId: meId },
+        ],
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  return NextResponse.json(
+    { error: "Nieznany tryb" },
+    { status: 400 }
+  );
+}
+
+/**
+ * Metoda PUT obsługująca akceptację zaproszenia do znajomych.
+ * Wyszukuje zaproszenie o statusie "PENDING" (SELECT) i modyfikuje jego status na "ACCEPTED" (UPDATE).
+ */
+export async function PUT(req: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
+  }
+
+  const { friendId } = await req.json();
+
+  if (!friendId) {
+    return NextResponse.json(
+      { error: "Brak friendId" },
+      { status: 400 }
+    );
+  }
+
+  // Wyszukanie oczekującego zaproszenia, gdzie zalogowany użytkownik jest odbiorcą.
+  const invite = await db.friend.findFirst({
+    where: {
+      userId: friendId,
+      friendId: userId,
+      status: "PENDING",
+    },
+  });
+
+  if (!invite) {
+    return NextResponse.json(
+      { error: "Nie znaleziono zaproszenia" },
+      { status: 404 }
+    );
+  }
+
+  // Aktualizacja statusu (UPDATE) rekordu znajomości za pomocą unikalnego identyfikatora (id).
+  const updated = await db.friend.update({
+    where: { id: invite.id },
+    data: { status: "ACCEPTED" },
+  });
+
+  return NextResponse.json(updated);
+}
+```

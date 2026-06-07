@@ -1,0 +1,179 @@
+#### [SECTION 1] Project Repository
+- GitHub Link: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/app/api/trips/route.ts` reprezentuje główny **API Route Endpoint** do zarządzania podróżami (Trips) w Next.js. Wspiera operacje pobierania, tworzenia oraz usuwania wyjazdów za pomocą metod GET, POST i DELETE:
+1. **GET**: Zwraca pełną listę wszystkich wyjazdów w systemie. Zapytanie do bazy zawiera powiązania (klauzula `include`) z właścicielem (`owner`) oraz wszystkimi uczestnikami (`participants` wraz z ich profilami użytkowników `user`). Wyjazdy są sortowane chronologicznie od najnowszych według daty utworzenia (`createdAt: "desc"`).
+2. **POST**: Tworzy nową podróż. Sprawdza autoryzację twórcy, po czym parsuje dane wejściowe: nazwa (`name` / `title`), opis, daty rozpoczęcia i zakończenia, lokalizacja oraz opcjonalna lista identyfikatorów zaproszonych uczestników (`participantIds`). Wyszukuje profil uczestnika właściciela (`ownerParticipant`) oraz pozostałych uczestników w bazie, a następnie tworzy wyjazd, automatycznie tworząc połączenie relacyjne (relacja many-to-many) z uczestnikami.
+3. **DELETE**: Usuwa wyjazd o określonym identyfikatorze (`tripId`). Przed usunięciem weryfikuje sesję oraz sprawdza, czy usunięcia próbuje dokonać faktyczny właściciel wyjazdu (`trip.ownerId === userId`). Jeśli nie, zwraca błąd o statusie `403 Forbidden`.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { db } from "@/lib/db";
+
+// Interfejs opisujący strukturę danych przesyłanych w ciele żądania zapisu wyjazdu
+interface CreateTripBody {
+  name?: string;
+  title?: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  location?: string;
+  destination?: string;
+  participantIds?: number[];
+}
+
+/**
+ * Endpoint GET - Pobieranie wszystkich podróży wraz z danymi właścicieli i uczestników.
+ */
+export async function GET() {
+  const trips = await db.trip.findMany({
+    include: {
+      owner: true,
+      participants: {
+        include: {
+          user: true, // Zagnieżdżone pobranie danych konta użytkownika dla każdego uczestnika
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc", // Najnowsze wyjazdy na początku
+    },
+  });
+
+  return NextResponse.json(trips);
+}
+
+/**
+ * Endpoint POST - Tworzenie nowej podróży.
+ */
+export async function POST(req: Request) {
+  try {
+    // Autoryzacja i wyodrębnienie ID zalogowanego użytkownika
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id ? Number(session.user.id) : null;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+    }
+
+    const body: CreateTripBody = await req.json();
+    const {
+      name,
+      title,
+      description,
+      startDate,
+      endDate,
+      location,
+      destination,
+      participantIds = [],
+    } = body;
+
+    // Pobranie profilu uczestnika dla właściciela (twórcy wyjazdu)
+    const ownerParticipant = await db.participant.findUnique({
+      where: { userId },
+    });
+
+    if (!ownerParticipant) {
+      return NextResponse.json(
+        { error: "Użytkownik nie ma profilu Participant" },
+        { status: 400 }
+      );
+    }
+
+    // Pobranie z bazy danych profili pozostałych wskazanych uczestników wyjazdu
+    const otherParticipants = await db.participant.findMany({
+      where: {
+        userId: {
+          in: participantIds.filter((id) => id !== userId), // Wykluczenie właściciela z listy pozostałych uczestników
+        },
+      },
+    });
+
+    // Zapisanie nowego wyjazdu w bazie za pomocą Prisma
+    const trip = await db.trip.create({
+      data: {
+        name: name || title || "Nowy wyjazd",
+        description: description || "",
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        location: location || "Brak lokalizacji",
+        destination: destination || location || "Brak lokalizacji",
+        ownerId: userId,
+
+        // Nawiązanie relacji z uczestnikami wyjazdu (w tym właścicielem)
+        participants: {
+          connect: [
+            { id: ownerParticipant.id },
+            ...otherParticipants.map((p) => ({ id: p.id })),
+          ],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: true,
+          },
+        },
+        owner: true,
+      },
+    });
+
+    return NextResponse.json(trip);
+  } catch (error) {
+    console.error("CREATE TRIP ERROR:", error);
+    return NextResponse.json(
+      { error: "Błąd serwera" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Endpoint DELETE - Usuwanie wyjazdu (dostępne wyłącznie dla właściciela).
+ */
+export async function DELETE(req: Request) {
+  // Pobranie tożsamości zalogowanego użytkownika
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ? Number(session.user.id) : null;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+  }
+
+  // Pobranie identyfikatora podróży z parametrów adresu URL
+  const { searchParams } = new URL(req.url);
+  const tripId = Number(searchParams.get("tripId"));
+
+  if (!tripId) {
+    return NextResponse.json({ error: "Brak tripId" }, { status: 400 });
+  }
+
+  // Weryfikacja istnienia podróży
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+  });
+
+  if (!trip) {
+    return NextResponse.json({ error: "Wyjazd nie istnieje" }, { status: 404 });
+  }
+
+  // Sprawdzenie, czy żądający jest właścicielem podróży (zabezpieczenie przed nieautoryzowanym skasowaniem)
+  if (trip.ownerId !== userId) {
+    return NextResponse.json(
+      { error: "Brak uprawnień" },
+      { status: 403 }
+    );
+  }
+
+  // Wykonanie operacji usunięcia wyjazdu z bazy danych
+  await db.trip.delete({
+    where: { id: tripId },
+  });
+
+  return NextResponse.json({ success: true });
+}
+```

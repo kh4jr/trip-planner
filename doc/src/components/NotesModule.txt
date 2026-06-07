@@ -1,0 +1,94 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+- **Rola komponentu**: Komponent kliencki (`"use client"`) służący do wyświetlania oraz tworzenia notatek powiązanych z konkretną podróżą.
+- **Typ komponentu**: Client Component (komponent kliencki), obsługujący interaktywne stany wyświetlania formularza (`isAdding`) oraz przechowujący wpisywaną treść (`content`).
+- **Definicja Props**:
+  - `tripId`: Identifikator podróży, do której notatka ma zostać przypisana.
+  - `notes`: Tablica istniejących notatek typu `Note`.
+  - `onAddNote`: Callback przekazujący nowo stworzoną notatkę z powrotem do stanu nadrzędnego.
+- **Główna Logika Biznesowa**:
+  - `handleSubmit`: Przetwarza dane formularza, zapobiegając dodaniu pustej notatki. Generuje nowy obiekt `Note` z czasem utworzenia oraz unikalnym identyfikatorem liczbowym (`Date.now()`). Po wywołaniu `onAddNote` czyści pole tekstowe i zamyka formularz.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+```typescript
+"use client";
+import { useState } from 'react';
+import { Note } from '@/lib/data';
+
+// Definicja interfejsu opisującego typowanie wejścia dla komponentu notatek
+interface NotesModuleProps {
+    tripId: number;
+    notes: Note[];
+    onAddNote: (note: Note) => void;
+}
+
+export default function NotesModule({ tripId, notes, onAddNote }: NotesModuleProps) {
+    // Stan kontrolujący widoczność formularza tekstowego
+    const [isAdding, setIsAdding] = useState(false);
+    // Stan przechowujący wpisany tekst notatki
+    const [content, setContent] = useState('');
+
+    /**
+     * Obsługa dodawania nowej notatki.
+     */
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      // Blokada przed przesyłaniem pustych formularzy
+      if (!content) return;
+
+      const newNote: Note = {
+        id: Date.now(), // Unikalny identyfikator czasowy
+        tripId: tripId,
+        content: content,
+        date: new Date().toLocaleString() // Pobranie lokalnie sformatowanej daty i godziny
+      };
+
+      onAddNote(newNote); // Wysłanie obiektu notatki do nadrzędnego zarządcy stanów
+      setContent(''); // Reset pola tekstowego
+      setIsAdding(false); // Ukrycie formularza
+    };
+
+    return (
+        <div className="p-4 space-y-4">
+            <h3 className="text-xl font-bold">Notatki z podróży</h3>
+            
+            {/* Siatka prezentująca notatki stylizowane na karteczki samoprzylepne (bg-yellow-50) */}
+            <div className="grid gap-4">
+                {notes.map(note => (
+                    <div key={note.id} className="p-4 border rounded-lg shadow-sm bg-yellow-50">
+                        {/* whitespace-pre-wrap zachowuje przejścia do nowej linii wpisane przez użytkownika */}
+                        <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
+                        <span className="text-xs text-gray-400 mt-2 block">{note.date}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Warunkowe renderowanie panelu wpisywania lub przycisku wyzwalającego formularz */}
+            {isAdding ? (
+                <form onSubmit={handleSubmit} className="border p-4 rounded-lg bg-white space-y-3">
+                    <textarea 
+                        className="w-full p-2 border rounded h-24" 
+                        placeholder="Treść notatki..."
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                      required
+                    />
+                    <div className="flex gap-2">
+                        <button type="submit" className="bg-green-500 text-white px-4 py-2 rounded">Zapisz</button>
+                        <button type="button" onClick={() => setIsAdding(false)} className="bg-gray-200 px-4 py-2 rounded">Anuluj</button>
+                    </div>
+                </form>
+            ) : (
+                <button 
+                    onClick={() => setIsAdding(true)}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+                >
+                    + Dodaj nową notatkę
+                </button>
+            )}
+        </div>
+    );
+}
+```

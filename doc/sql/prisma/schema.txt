@@ -1,0 +1,177 @@
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Database Architectural Review & CRUD Mapping
+Plik `schema.prisma` definiuje strukturę relacyjnej bazy danych PostgreSQL dla aplikacji Trip Planner. Odpowiada za deklarację modeli danych, ich atrybutów, typów oraz powiązań (kluczy obcych i reguł integralności referencyjnej, takich jak `onDelete: Cascade` lub `onDelete: SetNull`). Jest to plik konfiguracyjny generatora Prisma Client i mapowania obiektowo-relacyjnego (ORM), a nie plik realizujący operacje runtime, dlatego nie zawiera bezpośredniego kodu wykonującego CRUD. Definiuje jednak schemat tabel, na których te operacje są wykonywane.
+
+Mapowanie modeli na struktury SQL i ograniczenia (Constraints):
+- **User**: Odpowiada tabeli `"User"`. Pole `email` z `@unique` wymusza unikalność na poziomie bazy danych poprzez automatyczne utworzenie indeksu unikalnego (`CREATE UNIQUE INDEX "User_email_key" ON "User"("email")`). Wyszukiwanie użytkownika po e-mailu (np. `prisma.user.findUnique`) przekłada się bezpośrednio na zapytanie:
+  ```sql
+  SELECT * FROM "User" WHERE "email" = $1;
+  ```
+- **Trip**: Odpowiada tabeli `"Trip"`. Relacja z `User` jako właścicielem (`ownerId`) tworzy klucz obcy z regułą `ON DELETE SET NULL`. W SQL oznacza to:
+  ```sql
+  ALTER TABLE "Trip" ADD CONSTRAINT "Trip_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE SET NULL;
+  ```
+- **Participant**: Odpowiada tabeli `"Participant"`. Łączy użytkownika (`User`) z uczestnikiem wyjazdu. Reguła `ON DELETE CASCADE` oznacza, że usunięcie rekordu użytkownika automatycznie usunie powiązany z nim rekord uczestnika:
+  ```sql
+  ALTER TABLE "Participant" ADD CONSTRAINT "Participant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE;
+  ```
+- **Friend**: Odpowiada tabeli `"Friend"`, służącej do modelowania relacji znajomości (wielu do wielu) pomiędzy użytkownikami. Posiada klucze obce do tabeli `"User"` z regułą `ON DELETE CASCADE` oraz unikalny indeks złożony na parę (`userId`, `friendId`):
+  ```sql
+  CREATE UNIQUE INDEX "Friend_userId_friendId_key" ON "Friend"("userId", "friendId");
+  ```
+- Pozostałe tabele, takie jak **Activity**, **Expense**, **Note**, **TripItem** oraz **TripImage**, są powiązane z tabelą `"Trip"` kluczem obcym `tripId` z klauzulą `ON DELETE CASCADE`. W ten sposób usunięcie wycieczki (`Trip`) kaskadowo usuwa wszystkie powiązane z nią elementy, co zapobiega powstawaniu osieroconych rekordów w bazie danych.
+- **Todo**: Tabela pomocnicza powiązana logicznie przez `tripId`, jednak w schemacie nie posiada fizycznej definicji klucza obcego `@relation`. Oznacza to brak wymuszenia integralności referencyjnej na poziomie bazy danych dla tego modelu.
+
+#### [SECTION 3] Code Review & Explanatory Comments
+```prisma
+// Definicja generatora Prisma Client, który automatycznie tworzy typowane interfejsy dostępowe w języku TypeScript.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Konfiguracja źródła danych. Jako system zarządzania bazą danych (DBMS) używany jest PostgreSQL.
+// Parametr url odnosi się do puli połączeń (np. PgBouncer), natomiast directUrl reprezentuje bezpośrednie połączenie z bazą.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// Model reprezentujący użytkownika systemu.
+// Zawiera klucz główny typu Integer z funkcją autoincrement na poziomie bazy (typ SERIAL w PostgreSQL).
+model User {
+  id           Int           @id @default(autoincrement()) // Klucz główny tabeli User.
+  email        String        @unique                      // Adres e-mail, pełniący rolę alternatywnego klucza unikalnego (indeksowany unikalnie).
+  password     String                                     // Hash hasła użytkownika (przechowywany jako ciąg znaków).
+  name         String?                                    // Opcjonalne imię/nazwa użytkownika (dopuszcza wartości NULL).
+  trips        Trip[]        @relation("TripOwner")       // Relacja jeden-do-wielu: użytkownik może być właścicielem wielu podróży.
+  participants Participant[]                            // Relacja jeden-do-jednego/wielu: powiązanie konta użytkownika z profilami uczestnika.
+  friendships  Friend[]      @relation("UserFriendships") // Relacja jeden-do-wielu dla zainicjowanych znajomości.
+  friendOf     Friend[]      @relation("FriendOfUsers")   // Relacja jeden-do-wielu dla znajomości, w których użytkownik został zaproszony.
+}
+
+// Model reprezentujący podróż/wycieczkę.
+model Trip {
+  id           Int           @id @default(autoincrement()) // Klucz główny wycieczki.
+  name         String                                     // Nazwa wycieczki (wymagana).
+  destination  String                                     // Cel podróży (wymagany).
+  startDate    DateTime                                   // Data rozpoczęcia podróży.
+  endDate      DateTime                                   // Data zakończenia podróży.
+  ownerId      Int?                                       // Klucz obcy wskazujący na użytkownika-właściciela. Dopuszcza NULL.
+  description  String?       @default("")                 // Opcjonalny opis podróży, domyślnie pusty ciąg.
+  location     String?       @default("Brak lokalizacji") // Opcjonalna lokalizacja szczegółowa.
+  createdAt    DateTime      @default(now())              // Znacznik czasu utworzenia rekordu (generowany automatycznie przez DBMS).
+
+  // Definicja powiązania klucza obcego z tabelą User. W przypadku usunięcia właściciela, pole ownerId zostaje ustawione na NULL (SetNull).
+  owner        User?         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  participants Participant[] // Uczestnicy przypisani do tej wycieczki (relacja wiele-do-wielu na poziomie Prisma).
+  activities   Activity[]    // Harmonogram aktywności w ramach danej wycieczki.
+  expenses     Expense[]     // Wydatki powiązane z wycieczką.
+  notes        Note[]        // Notatki powiązane z wycieczką.
+  images       TripImage[]   // Zdjęcia powiązane z wycieczką.
+  items        TripItem[]    // Lista rzeczy do spakowania przypisanych do wycieczki.
+}
+
+// Model reprezentujący uczestnika podróży. Uczestnik może, ale nie musi, być zarejestrowanym użytkownikiem aplikacji.
+model Participant {
+  id     Int    @id @default(autoincrement()) // Klucz główny uczestnika.
+  name   String @default("Uczestnik")         // Nazwa wyświetlana uczestnika.
+  email  String @default("")                  // Adres e-mail uczestnika (opcjonalny/domyślny).
+  role   String @default("member")            // Rola uczestnika w podróży (np. organizer, member).
+  
+  userId Int?   @unique                       // Opcjonalny unikalny klucz obcy powiązany z kontem User (relacja 1-1).
+  // Integralność referencyjna: CASCADE – usunięcie konta User usuwa powiązanego z nim Participant.
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  trips  Trip[]                               // Relacja wiele-do-wielu: uczestnik może brać udział w wielu podróżach.
+}
+
+// Model reprezentujący relację znajomości (tabela łącząca) pomiędzy dwoma użytkownikami.
+model Friend {
+  id       Int    @id @default(autoincrement()) // Klucz główny relacji.
+  userId   Int                                  // Klucz obcy użytkownika inicjującego relację.
+  friendId Int                                  // Klucz obcy zaproszonego użytkownika.
+  status   String @default("PENDING")           // Status znajomości (np. PENDING, ACCEPTED).
+
+  // Definicja relacji z tabelą User. Usunięcie dowolnego z użytkowników kaskadowo usuwa powiązanie znajomości.
+  user   User @relation("UserFriendships", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOfUsers", fields: [friendId], references: [id], onDelete: Cascade)
+
+  // Unikalny indeks złożony gwarantujący, że para użytkowników może mieć tylko jedną relację znajomości w bazie.
+  @@unique([userId, friendId])
+}
+
+// Model reprezentujący pojedynczą aktywność (punkt w harmonogramie) w ramach podróży.
+model Activity {
+  id            Int      @id @default(autoincrement()) // Klucz główny aktywności.
+  name          String                                 // Nazwa aktywności.
+  time          DateTime                               // Planowany czas realizacji aktywności.
+  tripId        Int                                    // Klucz obcy powiązany z wycieczką.
+  createdByName String?  @default("Użytkownik")         // Nazwa użytkownika, który dodał aktywność.
+  // Integralność referencyjna: CASCADE – usunięcie wycieczki usuwa wszystkie jej aktywności.
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// Model reprezentujący wydatek finansowy przypisany do podróży.
+model Expense {
+  id          Int    @id @default(autoincrement()) // Klucz główny wydatku.
+  description String                               // Opis wydatku (np. zakup biletów).
+  amount      Float                                // Kwota wydatku.
+  paidBy      String                               // Informacja, kto dokonał płatności.
+  category    String @default("food")              // Kategoria wydatku.
+  tripId      Int                                  // Klucz obcy powiązany z wycieczką.
+  // Integralność referencyjna: CASCADE – usunięcie wycieczki automatycznie czyści powiązane wydatki.
+  trip        Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// Model reprezentujący notatkę/zadanie przypisane do wycieczki.
+model Note {
+  id          Int      @id @default(autoincrement()) // Klucz główny notatki.
+  content     String                                 // Treść notatki.
+  author      String   @default("organizator")       // Autor notatki.
+  isCompleted Boolean  @default(false)               // Status realizacji/oznaczenia zadania.
+  completedBy String?                                // Informacja o osobie, która zrealizowała zadanie.
+  createdAt   DateTime @default(now())              // Data utworzenia notatki.
+  tripId      Int                                    // Klucz obcy powiązany z wycieczką.
+  // Integralność referencyjna: CASCADE – automatyczne usuwanie notatek przy usunięciu podróży.
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// Model reprezentujący rzecz do spakowania w ramach podróży.
+model TripItem {
+  id          Int     @id @default(autoincrement()) // Klucz główny elementu ekwipunku.
+  name        String                                // Nazwa rzeczy (np. paszport).
+  category    String  @default("Inne")              // Kategoria (np. dokumenty, ubrania).
+  isCompleted Boolean @default(false)               // Status spakowania przedmiotu.
+  packedBy    String?                               // Osoba, która spakowała dany przedmiot.
+  tripId      Int                                   // Klucz obcy wycieczki.
+  // Integralność referencyjna: CASCADE – usunięcie podróży usuwa jej listę przedmiotów.
+  trip        Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// Model reprezentujący globalne lub lokalne zadanie Todo. 
+// Uwaga: Brak fizycznej relacji klucza obcego @relation(fields: [tripId], ...) oznacza, że pole tripId 
+// działa tu wyłącznie jako identyfikator logiczny, a integralność referencyjna nie jest egzekwowana przez DBMS.
+model Todo {
+  id          Int      @id @default(autoincrement()) // Klucz główny zadania.
+  tripId      Int                                    // Logiczny identyfikator wycieczki (brak klucza obcego).
+  content     String                                 // Treść zadania.
+  category    String   @default("Inne")              // Kategoria zadania.
+  isCompleted Boolean  @default(false)               // Status wykonania.
+  createdAt   DateTime @default(now())              // Czas utworzenia.
+}
+
+// Model przechowujący zdjęcia przypisane do danej podróży.
+model TripImage {
+  id         Int      @id @default(autoincrement()) // Klucz główny rekordu zdjęcia.
+  url        String                                 // Adres URL pliku graficznego (np. w chmurze).
+  caption    String?                                // Opcjonalny podpis pod zdjęciem.
+  uploadedBy String                                 // Identyfikator/nazwa osoby wgrywającej zdjęcie.
+  createdAt  DateTime @default(now())              // Czas przesłania.
+  tripId     Int                                    // Klucz obcy wycieczki.
+  // Integralność referencyjna: CASCADE – usunięcie wycieczki usuwa powiązane rekordy zdjęć.
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+```

@@ -1,0 +1,50 @@
+---
+#### [SECTION 1] Project Repository
+- Provide the GitHub link for this project: https://github.com/kh4jr/trip-planner.git
+
+#### [SECTION 2] Architectural Review & Main Logic  
+Plik `src/lib/db.ts` to kluczowy element warstwy dostępu do danych (Data Access Layer) w aplikacji. Odpowiada on za bezpieczną inicjalizację oraz eksport instancji klienta ORM Prisma (`PrismaClient`). 
+
+Głównym wyzwaniem architektonicznym w środowiskach takich jak Next.js (wykorzystujących Hot Module Replacement / Fast Refresh w trybie deweloperskim) jest fakt, że każde przeładowanie kodu powoduje ponowne wykonanie modułów. Gdybyśmy inicjalizowali `PrismaClient` w standardowy sposób przy każdym imporcie, szybko doprowadziłoby to do wyczerpania puli połączeń (connection pool fatigue) bazy danych. 
+
+Aby temu zapobiec, plik ten implementuje wzorzec **Singleton** na poziomie procesu Node.js:
+- Zapisuje utworzoną instancję `PrismaClient` w obiekcie globalnym `globalThis`.
+- Przy kolejnych przeładowaniach modułu w środowisku deweloperskim aplikacja ponownie wykorzystuje istniejące już połączenie.
+- W środowisku produkcyjnym instancja tworzona jest jednorazowo, ponieważ kod nie ulega tam ciągłemu przeładowywaniu.
+- Plik dynamicznie dopasowuje poziom logowania (log levels): w środowisku programistycznym włącza szczegółowy podgląd zapytań SQL (`query`), ostrzeżeń (`warn`) i błędów (`error`), natomiast na produkcji ogranicza logi wyłącznie do krytycznych błędów (`error`), co zwiększa wydajność i bezpieczeństwo.
+
+#### [SECTION 3] Code Review & Explanatory Comments  
+Poniżej znajduje się kompletny kod pliku inicjalizującego klienta bazy danych wraz z akademickim komentarzem strukturalnym:
+
+```typescript
+import { PrismaClient } from "@prisma/client";
+
+// Deklaracja typu i przypisanie do zmiennej globalnej globalThis w celu przechowania instancji Prisma.
+// globalThis reprezentuje globalny obiekt kontekstu (odpowiednik window w przeglądarkach lub global w Node.js).
+// Rzutowanie typu as unknown as {...} pozwala obejść restrykcje typowania TypeScriptu dla obiektów globalnych.
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+// Eksport stałej db reprezentującej współdzieloną instancję PrismaClient.
+// Operator koalescencji null (??) sprawdza, czy instancja prisma istnieje już w obiekcie globalnym.
+// Jeśli istnieje, zostaje ponownie użyta; jeśli nie, tworzona jest nowa instancja PrismaClient.
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    // Konfiguracja logowania zdarzeń bazy danych.
+    // Poziom logów zależy od aktualnego środowiska uruchomieniowego (zmienna NODE_ENV).
+    log:
+      process.env.NODE_ENV === "development"
+        ? ["query", "error", "warn"] // W trybie deweloperskim logujemy zapytania SQL, błędy i ostrzeżenia
+        : ["error"],                 // W środowisku produkcyjnym logujemy wyłącznie błędy w celu optymalizacji wydajności
+  });
+
+// Warunek zapobiegający zapisywaniu instancji db w globalnym obiekcie w środowisku produkcyjnym.
+// Na produkcji nadmiarowy zapis globalny jest niepotrzebny, natomiast w trybie programistycznym
+// jest kluczowy dla poprawnego działania mechanizmu Fast Refresh bez zrywania połączeń.
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = db;
+}
+```
+---
