@@ -102,6 +102,16 @@ export async function POST(req: Request) {
     },
   });
 
+  // Utwórz powiadomienie o zaproszeniu do znajomych
+  await db.notification.create({
+    data: {
+      userId: friendId,
+      type: "FRIEND_REQUEST",
+      content: `Otrzymałeś zaproszenie do znajomych od ${session?.user?.name || session?.user?.email || "Użytkownik"}`,
+      link: "/friends",
+    },
+  });
+
   return NextResponse.json(invite);
 }
 
@@ -189,6 +199,16 @@ export async function PUT(req: Request) {
   const updated = await db.friend.update({
     where: { id: invite.id },
     data: { status: "ACCEPTED" },
+  });
+
+  // Utwórz powiadomienie o zaakceptowaniu zaproszenia do znajomych
+  await db.notification.create({
+    data: {
+      userId: friendId,
+      type: "FRIEND_ACCEPTED",
+      content: `${session?.user?.name || session?.user?.email || "Użytkownik"} zaakceptował Twoje zaproszenie do znajomych`,
+      link: "/friends",
+    },
   });
 
   return NextResponse.json(updated);

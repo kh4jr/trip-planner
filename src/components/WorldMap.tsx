@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 
 const geoUrl =
   "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -8,11 +8,16 @@ const geoUrl =
 interface WorldMapProps {
   visited: string[]; 
   planned?: string[]; 
+  pins?: {
+    name: string;
+    coordinates: [number, number];
+  }[];
 }
 
 export default function WorldMap({
   visited,
   planned = [],
+  pins = [],
 }: WorldMapProps) {
   return (
     <div className="w-full h-full min-h-[300px]">
@@ -48,6 +53,19 @@ export default function WorldMap({
             })
           }
         </Geographies>
+        {pins.map(({ name, coordinates }) => (
+          <Marker key={name} coordinates={coordinates}>
+            <circle r={5} fill="#EF4444" stroke="#FFF" strokeWidth={2} className="animate-pulse" />
+            <text
+              textAnchor="middle"
+              y={-10}
+              className="font-black text-blue-900 bg-white"
+              style={{ fontFamily: "inherit", fontSize: "10px", fill: "#1E3A8A" }}
+            >
+              {name}
+            </text>
+          </Marker>
+        ))}
       </ComposableMap>
     </div>
   );

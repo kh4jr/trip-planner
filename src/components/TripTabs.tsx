@@ -2,11 +2,19 @@
 
 import { useState } from "react";
 import { addExpense, addNote } from "@/lib/actions";
-import { Activity, Expense, Note, TripItem } from "@prisma/client";
+import { Activity, Expense, Note, TripItem, TripRequest } from "@prisma/client";
 import { ChevronDown } from "lucide-react";
 import { FullTrip } from "@/types/fullTrip";
 import { useEffect } from "react";
 import { errorAlert, successAlert } from "@/lib/alert";
+
+interface PendingJoinRequest extends TripRequest {
+  user: {
+    id: number;
+    name: string | null;
+    email: string;
+  };
+}
 
 interface ExpenseStat {
   name: string;
@@ -24,8 +32,10 @@ interface TripTabsProps {
   todos: TripItem[];
 
   isReadOnly: boolean;
+  isParticipant: boolean;
 
   onDeleteTrip: (id: number) => void;
+  onLeaveTrip: () => void;
 
   onAddActivity: (activity: Activity) => void;
   onDeleteActivity: (id: number) => Promise<void>;
@@ -79,11 +89,176 @@ export default function TripTabs(props: TripTabsProps) {
   message: string;
 } | null>(null);
 
+  const [joinStatus, setJoinStatus] = useState<"NONE" | "PENDING" | "APPROVED" | "REJECTED">("NONE");
+  const [requestingJoin, setRequestingJoin] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<PendingJoinRequest[]>([]);
+
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [friendsToInvite, setFriendsToInvite] = useState<{ id: number; name: string | null; email: string }[]>([]);
+  const [selectedFriendsToInvite, setSelectedFriendsToInvite] = useState<number[]>([]);
+  const [loadingFriendsToInvite, setLoadingFriendsToInvite] = useState(false);
+
+  interface InvitedFriend {
+    id: number;
+    name: string | null;
+    email: string;
+  }
+  interface TripInvitationWithInvitee {
+    id: number;
+    tripId: number;
+    inviteeId: number;
+    inviterId: number;
+    status: string;
+    invitee: {
+      id: number;
+      name: string | null;
+      email: string;
+    };
+  }
+
+  const [pendingInvitedFriends, setPendingInvitedFriends] = useState<InvitedFriend[]>([]);
+
+  useEffect(() => {
+    if (props.isParticipant && props.trip?.id) {
+      fetch(`/api/trips/${props.trip.id}/invitations`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            const pending = data
+              .filter((invite: TripInvitationWithInvitee) => invite.status === "PENDING" && invite.invitee)
+              .map((invite: TripInvitationWithInvitee) => invite.invitee);
+            setPendingInvitedFriends(pending);
+          }
+        })
+        .catch(() => setPendingInvitedFriends([]));
+    } else {
+      setPendingInvitedFriends([]);
+    }
+  }, [props.isParticipant, props.trip?.id]);
+
+  useEffect(() => {
+    if (isInviteModalOpen && props.trip?.id) {
+      setLoadingFriendsToInvite(true);
+      fetch("/api/friends")
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            const nonParticipants = data.filter(
+              (friend: { id: number; name: string | null; email: string }) =>
+                !props.trip.participants.some((p) => p.user?.id === friend.id)
+            );
+            setFriendsToInvite(nonParticipants);
+          }
+        })
+        .catch(() => setFriendsToInvite([]))
+        .finally(() => setLoadingFriendsToInvite(false));
+    }
+  }, [isInviteModalOpen, props.trip.participants, props.trip?.id]);
+
+  const handleSendGroupInvites = async () => {
+    if (selectedFriendsToInvite.length === 0) return;
+    setLoading(true);
+    try {
+      for (const friendId of selectedFriendsToInvite) {
+        await fetch(`/api/trips/${props.trip.id}/invitations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ inviteeId: friendId })
+        });
+      }
+      window.alert("Zaproszenia zostały wysłane!");
+      setIsInviteModalOpen(false);
+      setSelectedFriendsToInvite([]);
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      window.alert("Wystąpił błąd");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!props.isParticipant && props.trip?.id) {
+      fetch(`/api/trips/${props.trip.id}/requests/my-status`)
+        .then((res) => res.json())
+        .then((data) => setJoinStatus(data.status || "NONE"))
+        .catch(() => setJoinStatus("NONE"));
+    }
+  }, [props.isParticipant, props.trip?.id]);
+
+  useEffect(() => {
+    if (props.isParticipant && props.trip?.id) {
+      fetch(`/api/trips/${props.trip.id}/requests`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setPendingRequests(data);
+          }
+        })
+        .catch(() => setPendingRequests([]));
+    }
+  }, [props.isParticipant, props.trip?.id]);
+
+  const handleRequestJoin = async () => {
+    setRequestingJoin(true);
+    try {
+      const res = await fetch(`/api/trips/${props.trip.id}/requests`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        setJoinStatus("PENDING");
+      } else {
+        const data = await res.json();
+        window.alert(`Nie udało się wysłać prośby: ${data.error || "Błąd serwera"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      window.alert("Wystąpił błąd");
+    } finally {
+      setRequestingJoin(false);
+    }
+  };
+
+  const handleRequestAction = async (requestId: number, action: "APPROVE" | "REJECT") => {
+    try {
+      const res = await fetch(`/api/trips/${props.trip.id}/requests`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action })
+      });
+      if (res.ok) {
+        setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        window.alert(`Nie udało się podjąć akcji: ${data.error || "Błąd"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      window.alert("Wystąpił błąd");
+    }
+  };
+
   const formatTime = (d: Date | string) =>
     new Date(d).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 
   const formatDate = (d: Date | string) =>
     new Date(d).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
+
+  const formatDatetimeLocal = (dateInput: Date | string, setTimeToEnd = false) => {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "";
+    
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    
+    const hh = setTimeToEnd ? "23" : "00";
+    const min = setTimeToEnd ? "59" : "00";
+    
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  };
 
 
   useEffect(() => {
@@ -129,6 +304,15 @@ export default function TripTabs(props: TripTabsProps) {
 
   const handleSaveActivity = async () => {
     if (!newActivityName || !newActivityTime) return;
+
+    const activityDate = new Date(newActivityTime);
+    const tripStart = new Date(props.trip.startDate);
+    const tripEnd = new Date(props.trip.endDate);
+
+    if (activityDate < tripStart || activityDate > tripEnd) {
+      setAlert(errorAlert("Data aktywności musi mieścić się w przedziale trwania podróży."));
+      return;
+    }
 
     setLoading(true);
     setAlert(null);
@@ -201,6 +385,30 @@ export default function TripTabs(props: TripTabsProps) {
     } catch (error) {
       console.error(error);
       setAlert(errorAlert("Nie udało się dodać wydatku."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSettleUp = async (from: string, to: string, amount: number) => {
+    if (!window.confirm(`Czy na pewno chcesz uregulować dług: ${from} ➡️ ${to} o wartości ${amount.toFixed(2)} zł?`)) {
+      return;
+    }
+    setLoading(true);
+    setAlert(null);
+    try {
+      const saved = await addExpense(props.trip.id, {
+        description: `Rozliczenie: ${from} ➡️ ${to}`,
+        amount: parseFloat(amount.toFixed(2)),
+        paidBy: from,
+        category: "other",
+      });
+
+      props.onAddExpense(saved);
+      setAlert(successAlert("Dług został pomyślnie uregulowany!"));
+    } catch (err) {
+      console.error(err);
+      setAlert(errorAlert("Nie udało się uregulować długu."));
     } finally {
       setLoading(false);
     }
@@ -386,7 +594,17 @@ export default function TripTabs(props: TripTabsProps) {
                 {p.name.charAt(0).toUpperCase()}
               </div>
             ))
-          ) : (
+          ) : null}
+          {pendingInvitedFriends.map((friend) => (
+            <div 
+              key={`invited-${friend.id}`} 
+              title={`${friend.name || friend.email} (Zaproszony)`}
+              className="relative w-12 h-12 rounded-full bg-blue-100 border-4 border-dashed border-blue-400 flex items-center justify-center text-xs text-blue-600 font-black shadow-lg uppercase opacity-50 shrink-0"
+            >
+              {(friend.name || friend.email).charAt(0).toUpperCase()}
+            </div>
+          ))}
+          {participants.length === 0 && pendingInvitedFriends.length === 0 && (
             <span className="text-xs !text-slate-400 italic bg-slate-50 px-3 py-2 rounded-lg">Brak uczestników</span>
           )}
         </div>
@@ -398,6 +616,15 @@ export default function TripTabs(props: TripTabsProps) {
             className="ml-3 p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all shadow-sm"
           >
             <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${isListOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+        {props.isParticipant && (
+          <button 
+            onClick={() => setIsInviteModalOpen(true)}
+            title="Zaproś znajomych"
+            className="ml-2 p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all shadow-sm font-black text-sm flex items-center justify-center w-9 h-9"
+          >
+            ➕
           </button>
         )}
 
@@ -420,40 +647,92 @@ export default function TripTabs(props: TripTabsProps) {
       </div>
     </div>
   </div>  
-        <button
-          onClick={handleDeleteTrip}
-          className="
-            px-4 py-2
-            rounded-xl
-            bg-red-600 text-white
-            text-xs font-black
-            hover:bg-red-700
-            transition
-            shadow-md
-          "
-        >
-          Usuń wyjazd
-        </button>
+        {props.isParticipant && !props.isReadOnly && (
+          <button
+            onClick={handleDeleteTrip}
+            className="
+              px-4 py-2
+              rounded-xl
+              bg-red-600 text-white
+              text-xs font-black
+              hover:bg-red-700
+              transition
+              shadow-md
+            "
+          >
+            Usuń wyjazd
+          </button>
+        )}
+        {props.isParticipant && props.isReadOnly && (
+          <button
+            onClick={props.onLeaveTrip}
+            className="
+              px-4 py-2
+              rounded-xl
+              bg-red-500 text-white
+              text-xs font-black
+              hover:bg-red-600
+              transition
+              shadow-md
+            "
+          >
+            Opuść wyjazd
+          </button>
+        )}
 
 
       </div>
 
       { }
-      <div className="flex space-x-2 bg-blue-50/30 p-2 rounded-3xl w-fit border border-blue-50/50 overflow-x-auto">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`py-3 px-8 text-sm font-black rounded-2xl transition-all whitespace-nowrap ${
-              activeTab === tab.id 
-                ? 'bg-white !text-blue-600 shadow-xl ring-1 ring-blue-50' 
-                : '!text-blue-400 hover:!text-blue-600'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {props.isParticipant && pendingRequests.length > 0 && (
+        <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6 mb-6 text-left space-y-4">
+          <h4 className="text-sm font-black text-blue-900 flex items-center gap-2">
+            🔔 Oczekujące prośby o dołączenie ({pendingRequests.length})
+          </h4>
+          <div className="space-y-3">
+            {pendingRequests.map((req) => (
+              <div key={req.id} className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-blue-50 shadow-sm">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{req.user.name || req.user.email}</p>
+                  <p className="text-xs text-slate-400">{req.user.email}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRequestAction(req.id, "APPROVE")}
+                    className="px-4 py-2 bg-green-600 text-white text-xs font-black rounded-xl hover:bg-green-700 transition"
+                  >
+                    Akceptuj
+                  </button>
+                  <button
+                    onClick={() => handleRequestAction(req.id, "REJECT")}
+                    className="px-4 py-2 bg-slate-200 text-slate-600 text-xs font-black rounded-xl hover:bg-slate-300 transition"
+                  >
+                    Odrzuć
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {props.isParticipant && (
+        <div className="flex space-x-2 bg-blue-50/30 p-2 rounded-3xl w-fit border border-blue-50/50 overflow-x-auto">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-3 px-8 text-sm font-black rounded-2xl transition-all whitespace-nowrap ${
+                activeTab === tab.id 
+                  ? 'bg-white !text-blue-600 shadow-xl ring-1 ring-blue-50' 
+                  : '!text-blue-400 hover:!text-blue-600'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {alert && (
           <div
@@ -470,7 +749,7 @@ export default function TripTabs(props: TripTabsProps) {
       { }
       <div className="mt-6 w-full lg:min-h-[500px]">
         
-        {activeTab === 'plan' && (
+        {props.isParticipant && activeTab === 'plan' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex justify-between items-center">
               <h3 className="text-3xl font-black !text-blue-900">Harmonogram</h3>
@@ -492,6 +771,8 @@ export default function TripTabs(props: TripTabsProps) {
                   className="w-full-1/2 p-4 bg-white border border-blue-300 rounded-xl outline-none font-bold !text-slate-900"
                   value={newActivityTime}
                   onChange={(e) => setNewActivityTime(e.target.value)}
+                  min={formatDatetimeLocal(props.trip.startDate, false)}
+                  max={formatDatetimeLocal(props.trip.endDate, true)}
                 />
                 <div className="flex gap-2">
                   <button
@@ -557,7 +838,7 @@ export default function TripTabs(props: TripTabsProps) {
         )}
 
         { }
-        {activeTab === 'budget' && (
+        {props.isParticipant && activeTab === 'budget' && (
           <div className="space-y-10 animate-in fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               <div className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl text-left">
@@ -567,7 +848,7 @@ export default function TripTabs(props: TripTabsProps) {
               <div className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl text-left">
                 <p className="!text-slate-400 font-black uppercase text-[10px] mb-2">Udział na osobę</p>
                 <p className="text-4xl font-black !text-blue-600 tracking-tighter">{perPerson.toFixed(2)} zł</p>
-                <p className="text-xs font-bold !text-blue-300 mt-4">Przy {participantCount} uczestnikach</p>
+                <p className="text-xs font-bold !text-blue-300 mt-4">{perPerson.toFixed(2)} zł / os. przy {participantCount} uczestnikach</p>
               </div>
               
               <div className="bg-blue-900 p-8 rounded-[2.5rem] text-white text-left">
@@ -590,9 +871,17 @@ export default function TripTabs(props: TripTabsProps) {
                 <p className="text-blue-100 font-black uppercase text-[10px] mb-4 text-left">Rozliczenia 🤝</p>
                 <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar text-left">
                   {settlement.length > 0 ? settlement.map((s, i) => (
-                    <div key={i} className="flex justify-between items-center text-[11px] font-bold bg-white/10 p-2.5 rounded-xl border border-white/10">
-                      <span className="truncate mr-1 text-white">{s.from} ➡️ {s.to}</span>
-                      <span className="text-white bg-blue-800 px-2 py-1 rounded-lg shrink-0">{s.amount.toFixed(2)} zł</span>
+                    <div key={i} className="flex justify-between items-center gap-2 text-[11px] font-bold bg-white/10 p-2.5 rounded-xl border border-white/10">
+                      <span className="truncate text-white">{s.from} ➡️ {s.to}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-white bg-blue-800 px-2 py-1 rounded-lg shrink-0">{s.amount.toFixed(2)} zł</span>
+                        <button
+                          onClick={() => handleSettleUp(s.from, s.to, s.amount)}
+                          className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-black px-2 py-1 rounded-lg transition uppercase tracking-wider"
+                        >
+                          Ureguluj
+                        </button>
+                      </div>
                     </div>
                   )) : <p className="text-blue-100 text-xs font-bold italic opacity-70 text-center py-4">Wszystko rozliczone!</p>}
                 </div>
@@ -649,10 +938,13 @@ export default function TripTabs(props: TripTabsProps) {
                 <div key={exp.id} className="group flex justify-between items-center bg-white p-6 rounded-2xl border border-blue-50 shadow-sm hover:border-blue-200 transition-all">
                   <div className="flex items-center gap-4">
                     <button onClick={() => handleDeleteExpense(exp.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-400 transition-all">🗑️</button>
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-xl shadow-inner shrink-0">
+                      {EXPENSE_CATEGORIES.find(c => c.id === exp.category?.toLowerCase())?.icon || '📦'}
+                    </div>
                     <div className="text-left">
                       <p className="font-black !text-blue-900 text-lg">{exp.description}</p>
                       <p className="text-[10px] font-bold !text-blue-400 uppercase">
-                        Płatnik: {exp.paidBy} • {EXPENSE_CATEGORIES.find(c => c.id === exp.category)?.label || exp.category}
+                        Płatnik: {exp.paidBy} • {EXPENSE_CATEGORIES.find(c => c.id === exp.category?.toLowerCase())?.label || exp.category}
                       </p>
                     </div>
                   </div>
@@ -664,7 +956,7 @@ export default function TripTabs(props: TripTabsProps) {
         )}
 
         { }
-        {activeTab === 'notes' && (
+        {props.isParticipant && activeTab === 'notes' && (
           <div className="space-y-8 animate-in fade-in w-full">
             <div className="flex gap-4 bg-blue-50/30 p-3 rounded-[2rem] border border-blue-50 w-full">
               <input 
@@ -697,7 +989,7 @@ export default function TripTabs(props: TripTabsProps) {
         )}
 
         { }
-        {activeTab === 'tasks' && (
+        {props.isParticipant && activeTab === 'tasks' && (
           <div className="space-y-10 animate-in fade-in w-full">
             <div className="bg-white p-10 rounded-[3rem] border border-blue-100 shadow-2xl">
               <h3 className="text-2xl font-black !text-blue-900 mb-8 flex items-center gap-3 text-left"><span>📦</span> Lista pakowania</h3>
@@ -775,7 +1067,111 @@ export default function TripTabs(props: TripTabsProps) {
             </div>
           </div>
         )}
+        {!props.isParticipant && (
+          <div className="flex flex-col items-center justify-center py-16 text-center bg-blue-50/10 border-2 border-dashed border-blue-50 rounded-[2.5rem] p-8">
+            <div className="text-5xl mb-4 opacity-40">🔒</div>
+            <h3 className="text-xl font-black text-blue-900 mb-2">
+              Szczegóły zablokowane
+            </h3>
+            <p className="text-blue-400 font-bold max-w-sm mb-6">
+              Szczegóły dostępne tylko dla uczestników tej podróży.
+            </p>
+            {joinStatus === "PENDING" ? (
+              <button
+                disabled
+                className="px-6 py-3 bg-slate-300 text-slate-600 font-black rounded-2xl cursor-not-allowed uppercase text-xs tracking-widest shadow-md"
+              >
+                Wysłano prośbę
+              </button>
+            ) : joinStatus === "REJECTED" ? (
+              <div className="space-y-3">
+                <p className="text-red-500 font-bold text-sm">Twoja prośba została odrzucona.</p>
+                <button
+                  onClick={handleRequestJoin}
+                  disabled={requestingJoin}
+                  className="px-6 py-3 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all uppercase text-xs tracking-widest shadow-lg shadow-blue-200 disabled:opacity-50"
+                >
+                  {requestingJoin ? "Wysyłanie..." : "Poproś o dołączenie ponownie"}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleRequestJoin}
+                disabled={requestingJoin}
+                className="px-6 py-3 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all uppercase text-xs tracking-widest shadow-lg shadow-blue-200 disabled:opacity-50"
+              >
+                {requestingJoin ? "Wysyłanie..." : "Poproś o dołączenie"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-8 w-full max-w-md shadow-2xl border-4 border-blue-50">
+            <h2 className="text-xl font-black text-blue-900 mb-6 text-center">
+              Zaproś znajomych do wyjazdu
+            </h2>
+            
+            {loadingFriendsToInvite ? (
+              <p className="text-center text-xs text-slate-400 font-bold italic py-8">Ładowanie znajomych...</p>
+            ) : friendsToInvite.length > 0 ? (
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1 mb-6">
+                {friendsToInvite.map((friend) => {
+                  const isSel = selectedFriendsToInvite.includes(friend.id);
+                  return (
+                    <button
+                      key={friend.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFriendsToInvite((prev) =>
+                          prev.includes(friend.id)
+                            ? prev.filter((id) => id !== friend.id)
+                            : [...prev, friend.id]
+                        );
+                      }}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
+                        isSel
+                          ? "bg-blue-50 border-blue-200 text-blue-900"
+                          : "bg-white border-slate-100 hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <span>{friend.name || friend.email}</span>
+                      {isSel && <span className="text-blue-600">✔</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-center text-xs text-slate-400 font-bold italic py-8 mb-6">
+                Wszyscy Twoi znajomi są już uczestnikami tego wyjazdu.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsInviteModalOpen(false);
+                  setSelectedFriendsToInvite([]);
+                }}
+                className="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase text-xs tracking-widest"
+              >
+                Anuluj
+              </button>
+              <button
+                type="button"
+                disabled={selectedFriendsToInvite.length === 0 || loading}
+                onClick={handleSendGroupInvites}
+                className="flex-[2] py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg shadow-green-200 hover:bg-green-700 transition-all uppercase text-xs tracking-widest disabled:opacity-50"
+              >
+                {loading ? "Zapraszanie..." : `Wyślij zaproszenia (${selectedFriendsToInvite.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

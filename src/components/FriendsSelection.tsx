@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Alert from "@/components/ui/Alert";
 import Skeleton from "@/components/ui/Skeleton";
-import type { Trip } from "@prisma/client";
+import { Trip, TripInvitation } from "@prisma/client";
 
 type Friend = {
   id: number;
@@ -30,9 +30,20 @@ type SearchUser = {
 export default function FriendsSelection({
   refreshKey,
   onSelectTrip,
+  activeTripId,
+  activeTripParticipants = [],
 }: {
   refreshKey: number;
   onSelectTrip: (tripId: number) => void;
+  activeTripId?: number;
+  activeTripParticipants?: {
+    id: number;
+    user: {
+      id: number;
+      name: string | null;
+      email: string;
+    };
+  }[];
 }) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [query, setQuery] = useState("");
@@ -46,6 +57,46 @@ export default function FriendsSelection({
   title: string;
   description?: string;
 } | null>(null);
+
+  const [invitedIds, setInvitedIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (activeTripId) {
+      fetch(`/api/trips/${activeTripId}/invitations`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            const pendingInvites = data
+              .filter((invite: TripInvitation) => invite.status === "PENDING")
+              .map((invite: TripInvitation) => invite.inviteeId);
+            setInvitedIds(pendingInvites);
+          }
+        })
+        .catch(() => setInvitedIds([]));
+    } else {
+      setInvitedIds([]);
+    }
+  }, [activeTripId]);
+
+  const handleInviteToTrip = async (friendId: number) => {
+    if (!activeTripId) return;
+    try {
+      const res = await fetch(`/api/trips/${activeTripId}/invitations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteeId: friendId }),
+      });
+      if (res.ok) {
+        setInvitedIds((prev) => [...prev, friendId]);
+      } else {
+        const data = await res.json();
+        window.alert(`Nie udało się wysłać zaproszenia: ${data.error || "Błąd"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      window.alert("Wystąpił błąd");
+    }
+  };
 
 
   useEffect(() => {
@@ -338,7 +389,28 @@ export default function FriendsSelection({
                 </button>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                {activeTripId && (
+                  activeTripParticipants.some((p) => p.user?.id === f.id) ? (
+                    <span className="text-[10px] bg-blue-100 text-blue-600 font-black px-3 py-2 rounded-lg">
+                      Uczestnik
+                    </span>
+                  ) : invitedIds.includes(f.id) ? (
+                    <button
+                      disabled
+                      className="text-xs font-black px-3 py-2 rounded-lg bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                    >
+                      Zaproszono
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleInviteToTrip(f.id)}
+                      className="text-xs font-black px-3 py-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 border border-green-150 transition"
+                    >
+                      Zaproś
+                    </button>
+                  )
+                )}
                 <button
                   disabled={actionLoading === f.id}
                   onClick={() => handleRemoveFriend(f.id)}

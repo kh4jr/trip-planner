@@ -9,34 +9,42 @@ datasource db {
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
-  email        String        @unique
-  password     String
-  name         String?
-  trips        Trip[]        @relation("TripOwner")
-  participants Participant[]
-  friendships  Friend[]      @relation("UserFriendships")
-  friendOf     Friend[]      @relation("FriendOfUsers")
+  id                  Int              @id @default(autoincrement())
+  email               String           @unique
+  password            String
+  name                String?
+  trips               Trip[]           @relation("TripOwner")
+  participants        Participant[]
+  friendships         Friend[]         @relation("UserFriendships")
+  friendOf            Friend[]         @relation("FriendOfUsers")
+  tripRequests        TripRequest[]
+  receivedTripInvites TripInvitation[] @relation("ReceivedTripInvites")
+  sentTripInvites     TripInvitation[] @relation("SentTripInvites")
+  sentMessages        Message[]        @relation("SentMessages")
+  receivedMessages    Message[]        @relation("ReceivedMessages")
+  notifications       Notification[]
 }
 
 model Trip {
-  id           Int           @id @default(autoincrement())
-  name         String
-  destination  String
-  startDate    DateTime
-  endDate      DateTime
-  ownerId      Int?
-  description  String?       @default("")
-  location     String?       @default("Brak lokalizacji")
-  createdAt    DateTime      @default(now())
+  id              Int              @id @default(autoincrement())
+  name            String
+  destination     String
+  startDate       DateTime
+  endDate         DateTime
+  ownerId         Int?
+  description     String?          @default("")
+  location        String?          @default("Brak lokalizacji")
+  createdAt       DateTime         @default(now())
 
-  owner        User?         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  participants Participant[]
-  activities   Activity[]
-  expenses     Expense[]
-  notes        Note[]
-  images       TripImage[]
-  items        TripItem[]
+  owner           User?            @relation("TripOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  participants    Participant[]
+  activities      Activity[]
+  expenses        Expense[]
+  notes           Note[]
+  images          TripImage[]
+  items           TripItem[]
+  tripRequests    TripRequest[]
+  tripInvitations TripInvitation[]
 }
 
 model Participant {
@@ -120,4 +128,56 @@ model TripImage {
   createdAt  DateTime @default(now())
   tripId     Int
   trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model TripRequest {
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  userId    Int
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+}
+
+model TripInvitation {
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  inviteeId Int
+  inviterId Int
+  status    String   @default("PENDING") // PENDING, ACCEPTED, DECLINED
+  createdAt DateTime @default(now())
+
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  invitee   User     @relation("ReceivedTripInvites", fields: [inviteeId], references: [id], onDelete: Cascade)
+  inviter   User     @relation("SentTripInvites", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, inviteeId])
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  content    String
+  createdAt  DateTime @default(now())
+  isRead     Boolean  @default(false)
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   // e.g. "FRIEND_REQUEST", "FRIEND_ACCEPTED", "TRIP_INVITE", "NEW_MESSAGE"
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  link      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

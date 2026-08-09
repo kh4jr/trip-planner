@@ -50,10 +50,19 @@ export default async function FriendProfilePage({ params }: PageProps) {
 
   const userTrips = await db.trip.findMany({
     where: {
-      ownerId: profileUserId,
+      participants: {
+        some: {
+          userId: profileUserId,
+        },
+      },
     },
     include: {
       expenses: true,
+      participants: {
+        include: {
+          user: true,
+        },
+      },
     },
     orderBy: {
       startDate: "desc",
@@ -63,12 +72,14 @@ export default async function FriendProfilePage({ params }: PageProps) {
   const totalTrips = userTrips.length;
 
   const totalExpensesSum = userTrips.reduce((acc, trip) => {
-    const tripSum =
-      trip.expenses?.reduce((s, e) => {
-        const val = Number(e.amount?.toString() || 0);
-        return s + (isNaN(val) ? 0 : val);
-      }, 0) || 0;
+    const participant = trip.participants.find(p => p.userId === profileUserId);
+    const participantName = participant?.name || "";
+    const fallbackName = user.name || "";
 
+    const userPaidExpenses = trip.expenses?.filter(
+      (e) => e.paidBy === participantName || e.paidBy === fallbackName
+    ) || [];
+    const tripSum = userPaidExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     return acc + tripSum;
   }, 0);
 
@@ -77,12 +88,37 @@ export default async function FriendProfilePage({ params }: PageProps) {
   ).length;
 
   const uniqueDestinations = new Set(
-    userTrips.map((t) => t.destination).filter(Boolean)
+    userTrips.map((t) => t.destination || t.location).filter(Boolean)
   ).size;
 
-  const visitedCountries = Array.from(
-    new Set(userTrips.map((t) => t.destination).filter(Boolean))
-  ) as string[];
+  const visitedCountries = ["PL"];
+
+  const destinationCoordinates: Record<string, [number, number]> = {
+    warszawa: [21.0122, 52.2297],
+    warsaw: [21.0122, 52.2297],
+    władysławowo: [18.4287, 54.7909],
+    wladyslawowo: [18.4287, 54.7909],
+    kraków: [19.9449, 50.0647],
+    krakow: [19.9449, 50.0647],
+    gdańsk: [18.6466, 54.3520],
+    gdansk: [18.6466, 54.3520],
+    wrocław: [17.0385, 51.1079],
+    wroclaw: [17.0385, 51.1079],
+    poznań: [16.9252, 52.4064],
+    poznan: [16.9252, 52.4064],
+  };
+
+  const mapPins = userTrips
+    .map((trip) => {
+      const name = trip.destination || trip.location || "";
+      const cleanName = name.toLowerCase().trim();
+      const coords = destinationCoordinates[cleanName];
+      if (coords) {
+        return { name, coordinates: coords };
+      }
+      return null;
+    })
+    .filter((pin): pin is { name: string; coordinates: [number, number] } => pin !== null);
 
   return (
     <div className="!w-full min-h-screen bg-[#F8FAFC] !p-6 md:!p-12 text-left">
@@ -108,6 +144,26 @@ export default async function FriendProfilePage({ params }: PageProps) {
               <span className="bg-blue-100 text-blue-600 px-4 py-1.5 rounded-xl text-xs font-black uppercase">
                 ✈️ {totalTrips} Wypraw
               </span>
+            </div>
+
+            {/* Milestone progress bar */}
+            <div className="mt-6 max-w-md mx-auto md:mx-0">
+              <div className="flex justify-between items-center mb-2 gap-4">
+                <span className="text-xs font-black text-blue-900 uppercase tracking-wider">Poziom 2</span>
+                <span className="text-xs font-bold text-slate-400">Następny poziom przy 3 wyprawach</span>
+              </div>
+              <div className="w-full bg-blue-100/50 h-3 rounded-full overflow-hidden p-0.5 border border-blue-100 shadow-inner">
+                <div 
+                  className="bg-blue-600 h-full rounded-full transition-all duration-500 shadow-md shadow-blue-200" 
+                  style={{ width: `${Math.min(100, (totalTrips / 3) * 100)}%` }} 
+                />
+              </div>
+              <p className="text-[10px] font-bold text-blue-400 mt-2">
+                {totalTrips >= 3 
+                  ? "Osiągnął najwyższy poziom podróżnika! 🎉" 
+                  : `Zrealizuje jeszcze ${3 - totalTrips} wyprawę, aby awansować na kolejny poziom! 🚀`
+                }
+              </p>
             </div>
           </div>
         </section>
@@ -142,7 +198,7 @@ export default async function FriendProfilePage({ params }: PageProps) {
               Mapa Odkryć
             </h3>
             <div className="w-full min-h-[300px] bg-blue-50/30 rounded-[2.5rem] border-2 border-dashed border-blue-100 flex items-center justify-center overflow-hidden">
-              <WorldMap visited={visitedCountries} />
+              <WorldMap visited={visitedCountries} pins={mapPins} />
             </div>
           </div>
         </div>

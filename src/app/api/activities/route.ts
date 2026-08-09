@@ -5,16 +5,31 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { requireTripParticipant } from "@/lib/tripAuth";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const tripId = searchParams.get("tripId");
-  if (!tripId) return NextResponse.json([]);
+  try {
+    const { searchParams } = new URL(req.url);
+    const tripId = searchParams.get("tripId");
+    if (!tripId) return NextResponse.json([]);
 
-  const activities = await db.activity.findMany({
-    where: { tripId: parseInt(tripId) },
-    orderBy: { time: "asc" },
-  });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 403 });
+    }
 
-  return NextResponse.json(activities);
+    const userId = Number(session.user.id);
+    await requireTripParticipant(parseInt(tripId), userId);
+
+    const activities = await db.activity.findMany({
+      where: { tripId: parseInt(tripId) },
+      orderBy: { time: "asc" },
+    });
+
+    return NextResponse.json(activities);
+  } catch (error) {
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+    return NextResponse.json({ error: "Wystąpił błąd" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -32,10 +47,30 @@ export async function POST(req: Request) {
 
     await requireTripParticipant(tripId, userId);
 
+    const trip = await db.trip.findUnique({
+      where: { id: tripId },
+      select: { startDate: true, endDate: true },
+    });
+
+    if (!trip) {
+      return NextResponse.json({ error: "Brak wyjazdu" }, { status: 404 });
+    }
+
+    const activityTime = new Date(body.time);
+    if (isNaN(activityTime.getTime())) {
+      return NextResponse.json({ error: "Nieprawidłowy format daty" }, { status: 400 });
+    }
+
+    if (activityTime < trip.startDate || activityTime > trip.endDate) {
+      return NextResponse.json({
+        error: "Data aktywności musi mieścić się w przedziale trwania podróży."
+      }, { status: 400 });
+    }
+
     const newActivity = await db.activity.create({
       data: {
         name: body.name,
-        time: new Date(body.time),
+        time: activityTime,
         tripId,
         createdByName: session.user.name ?? session.user.email ?? "Użytkownik",
       },
@@ -60,7 +95,7 @@ export async function DELETE(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -70,12 +105,27 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
     }
 
+    const activity = await db.activity.findUnique({
+      where: { id: Number(id) },
+      select: { tripId: true },
+    });
+
+    if (!activity) {
+      return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    }
+
+    const userId = Number(session.user.id);
+    await requireTripParticipant(activity.tripId, userId);
+
     await db.activity.delete({
       where: { id: Number(id) },
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
     console.error("BŁĄD DELETE ACTIVITY:", error);
     return NextResponse.json(
       { error: "Nie udało się usunąć aktywności" },

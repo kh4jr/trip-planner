@@ -53,6 +53,22 @@ export async function POST(req: Request) {
       participantIds = [],
     } = body;
 
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return NextResponse.json({ error: "Nieprawidłowy format daty" }, { status: 400 });
+    }
+
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+    if (diffDays < 1) {
+      return NextResponse.json({
+        error: "Koniec wyjazdu musi być przynajmniej o jeden dzień późniejszy niż start."
+      }, { status: 400 });
+    }
+
     const ownerParticipant = await db.participant.findUnique({
       where: { userId },
     });

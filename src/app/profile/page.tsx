@@ -11,6 +11,7 @@ interface StatCardProps {
   value: string | number;
   sub: string;
   icon: string;
+  href?: string;
 }
 
 interface ArchiveItemProps {
@@ -31,18 +32,35 @@ export default async function ProfilePage() {
   const userIdNumber = parseInt(session.user.id);
 
   const userTrips = await db.trip.findMany({
-    where: { ownerId: userIdNumber },
-    include: { expenses: true },
+    where: {
+      participants: {
+        some: {
+          userId: userIdNumber
+        }
+      }
+    },
+    include: {
+      expenses: true,
+      participants: {
+        include: {
+          user: true
+        }
+      }
+    },
     orderBy: { startDate: 'desc' }
   });
 
   const totalTrips = userTrips.length;
 
   const totalExpensesSum = userTrips.reduce((acc, trip) => {
-    const tripSum = trip.expenses?.reduce((s, e) => {
-      const val = e.amount ? Number(e.amount.toString()) : 0;
-      return s + (isNaN(val) ? 0 : val);
-    }, 0) || 0;
+    const participant = trip.participants.find(p => p.userId === userIdNumber);
+    const participantName = participant?.name || "";
+    const fallbackName = session.user?.name || "";
+
+    const userPaidExpenses = trip.expenses?.filter(
+      (e) => e.paidBy === participantName || e.paidBy === fallbackName
+    ) || [];
+    const tripSum = userPaidExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     return acc + tripSum;
   }, 0);
 
@@ -51,12 +69,37 @@ export default async function ProfilePage() {
   ).length;
 
   const uniqueDestinations = new Set(
-    userTrips.map(t => t.destination).filter(Boolean)
+    userTrips.map(t => t.destination || t.location).filter(Boolean)
   ).size;
 
-  const visitedCountries = Array.from(
-    new Set(userTrips.map(trip => trip.destination).filter(Boolean))
-  ) as string[];
+  const visitedCountries = ["PL"];
+
+  const destinationCoordinates: Record<string, [number, number]> = {
+    warszawa: [21.0122, 52.2297],
+    warsaw: [21.0122, 52.2297],
+    władysławowo: [18.4287, 54.7909],
+    wladyslawowo: [18.4287, 54.7909],
+    kraków: [19.9449, 50.0647],
+    krakow: [19.9449, 50.0647],
+    gdańsk: [18.6466, 54.3520],
+    gdansk: [18.6466, 54.3520],
+    wrocław: [17.0385, 51.1079],
+    wroclaw: [17.0385, 51.1079],
+    poznań: [16.9252, 52.4064],
+    poznan: [16.9252, 52.4064],
+  };
+
+  const mapPins = userTrips
+    .map((trip) => {
+      const name = trip.destination || trip.location || "";
+      const cleanName = name.toLowerCase().trim();
+      const coords = destinationCoordinates[cleanName];
+      if (coords) {
+        return { name, coordinates: coords };
+      }
+      return null;
+    })
+    .filter((pin): pin is { name: string; coordinates: [number, number] } => pin !== null);
 
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] px-6 md:px-10 text-left">
@@ -89,13 +132,33 @@ export default async function ProfilePage() {
                   ✈️ {totalTrips} Wypraw
                 </span>
               </div>
+
+              {/* Milestone progress bar */}
+              <div className="mt-6 max-w-md mx-auto md:mx-0">
+                <div className="flex justify-between items-center mb-2 gap-4">
+                  <span className="text-xs font-black text-blue-900 uppercase tracking-wider">Poziom 2</span>
+                  <span className="text-xs font-bold text-slate-400">Następny poziom przy 3 wyprawach</span>
+                </div>
+                <div className="w-full bg-blue-100/50 h-3 rounded-full overflow-hidden p-0.5 border border-blue-100 shadow-inner">
+                  <div 
+                    className="bg-blue-600 h-full rounded-full transition-all duration-500 shadow-md shadow-blue-200" 
+                    style={{ width: `${Math.min(100, (totalTrips / 3) * 100)}%` }} 
+                  />
+                </div>
+                <p className="text-[10px] font-bold text-blue-400 mt-2">
+                  {totalTrips >= 3 
+                    ? "Gratulacje! Osiągnąłeś najwyższy poziom podróżnika! 🎉" 
+                    : `Zrealizuj jeszcze ${3 - totalTrips} wyprawę, aby awansować na kolejny poziom! 🚀`
+                  }
+                </p>
+              </div>
             </div>
           </section>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
             <div className="xl:col-span-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-6">
-              <StatCard title="Suma wyjazdów" value={totalTrips} sub="Wszystkie wyprawy" icon="🗺️" />
-              <StatCard title="Lokalizacje" value={uniqueDestinations} sub="Odwiedzone miejsca" icon="🌍" />
+              <StatCard title="Suma wyjazdów" value={totalTrips} sub="Wszystkie wyprawy" icon="🗺️" href="/?tab=my" />
+              <StatCard title="Lokalizacje" value={uniqueDestinations} sub="Odwiedzone miejsca" icon="🌍" href="/?tab=my" />
               <StatCard title="Łączny budżet" value={`${totalExpensesSum.toFixed(2)} zł`} sub="Wydane łącznie" icon="💰" />
               <StatCard title="Zakończone" value={completedTrips} sub="Archiwalne" icon="📅" />
             </div>
@@ -109,7 +172,7 @@ export default async function ProfilePage() {
               </div>
 
               <div className="flex-1 w-full min-h-[420px] lg:min-h-[500px] bg-blue-50/30 rounded-[2.5rem] border-2 border-dashed border-blue-100 flex items-center justify-center overflow-hidden">
-                <WorldMap visited={visitedCountries} />
+                <WorldMap visited={visitedCountries} pins={mapPins} />
               </div>
 
               <div className="flex gap-6 mt-8">
@@ -177,9 +240,9 @@ export default async function ProfilePage() {
   );
 }
 
-function StatCard({ title, value, sub, icon }: StatCardProps) {
-  return (
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-50 text-left">
+function StatCard({ title, value, sub, icon, href }: StatCardProps) {
+  const card = (
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-50 text-left transition-all hover:scale-[1.02] hover:shadow-2xl hover:border-blue-100 cursor-pointer h-full">
       <div className="text-3xl mb-4">{icon}</div>
       <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-1">
         {title}
@@ -188,6 +251,11 @@ function StatCard({ title, value, sub, icon }: StatCardProps) {
       <p className="text-[10px] text-slate-400 mt-1 font-bold">{sub}</p>
     </div>
   );
+
+  if (href) {
+    return <Link href={href} className="block no-underline">{card}</Link>;
+  }
+  return card;
 }
 
 function ArchiveItem({ title, date, cost, status, isBlue }: ArchiveItemProps) {

@@ -5,14 +5,24 @@ import { signOut } from "next-auth/react";
 import TripList from "@/components/TripList";
 import AuthModal from "@/components/AuthModal";
 import CreateTripModal from "@/components/CreateTripModal";
-import { Activity, Expense, Note, TripItem } from "@prisma/client";
+import { Activity, Expense, Note, TripItem, TripInvitation, Trip, User } from "@prisma/client";
 import { Session } from "next-auth";
 import Link from "next/link";
 import { FullTrip } from "@/types/fullTrip";
+
+interface ReceivedTripInvite extends TripInvitation {
+  trip: Trip;
+  inviter: {
+    name: string | null;
+    email: string;
+  };
+}
 import TripTabs from "@/components/TripTabs";
-import FriendsSelection from "@/components/FriendsSelection";
-import FriendsInvites from "@/components/FriendsInvites";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import ProfileModule from "@/components/ProfileModule";
+import FriendsModule from "@/components/FriendsModule";
+import MessagesModule from "@/components/MessagesModule";
+import NotificationsModule from "@/components/NotificationsModule";
 
 
 interface TripManagerProps {
@@ -50,11 +60,88 @@ export default function TripManager({
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "my" || tab === "all") {
+      setActiveTab(tab);
+    }
+  }, []);
+
   const [currentTripParticipants, setCurrentTripParticipants] =
     useState<FullTrip["participants"]>([]);
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [friendsVersion, setFriendsVersion] = useState(0);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [tripInvites, setTripInvites] = useState<ReceivedTripInvite[]>([]);
+
+  const [activeMainView, setActiveMainView] = useState<'trip' | 'profile' | 'friends' | 'messages' | 'notifications'>('trip');
+  const [initialChatFriendId, setInitialChatFriendId] = useState<number | undefined>(undefined);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
+
+  useEffect(() => {
+    fetchTripInvites();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const fetchUnreadCounts = async () => {
+      try {
+        const notifRes = await fetch("/api/notifications");
+        if (notifRes.ok) {
+          const notifications = await notifRes.json();
+          const unreadNotifs = notifications.filter((n: { isRead: boolean }) => !n.isRead).length;
+          setUnreadNotificationsCount(unreadNotifs);
+        }
+        
+        const msgRes = await fetch("/api/messages");
+        if (msgRes.ok) {
+          const chatsList = await msgRes.json();
+          const totalUnreadMsgs = chatsList.reduce((sum: number, c: { unreadCount: number }) => sum + (c.unreadCount || 0), 0);
+          setUnreadMessagesCount(totalUnreadMsgs);
+        }
+      } catch (err) {
+        console.error("Error polling unread counts:", err);
+      }
+    };
+    
+    fetchUnreadCounts();
+    const interval = setInterval(fetchUnreadCounts, 5000);
+    return () => clearInterval(interval);
+  }, [session]);
+
+  const fetchTripInvites = async () => {
+    try {
+      const res = await fetch("/api/trips/invitations");
+      if (res.ok) {
+        setTripInvites(await res.json());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleResponseTripInvite = async (invitationId: number, action: "ACCEPT" | "DECLINE") => {
+    try {
+      const res = await fetch("/api/trips/invitations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invitationId, action })
+      });
+      if (res.ok) {
+        setTripInvites((prev) => prev.filter((i) => i.id !== invitationId));
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        window.alert(`Błąd: ${data.error || "Wystąpił problem"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      window.alert("Wystąpił błąd");
+    }
+  };
 
   const sessionUserId = session?.user?.id
     ? Number(session.user.id)
@@ -62,6 +149,13 @@ export default function TripManager({
 
   const isReadOnly =
     !sessionUserId || selectedTrip?.ownerId !== sessionUserId;
+
+  const isParticipant =
+    !!sessionUserId &&
+    !!selectedTrip &&
+    selectedTrip.participants.some(
+      (p) => p.user.id === sessionUserId || (p.user.email && p.user.email === session?.user?.email)
+    );
 
   const allTrips: FullTrip[] = trips;
 
@@ -85,6 +179,19 @@ export default function TripManager({
 
   useEffect(() => {
     if (!selectedTrip) return;
+
+    const isUserParticipant = !!sessionUserId && selectedTrip.participants.some(
+      (p) => p.user.id === sessionUserId || (p.user.email && p.user.email === session?.user?.email)
+    );
+
+    if (!isUserParticipant) {
+      setActivities([]);
+      setExpenses([]);
+      setNotes([]);
+      setTodos([]);
+      setCurrentTripParticipants(selectedTrip.participants || []);
+      return;
+    }
 
     fetch(`/api/activities?tripId=${selectedTrip.id}`)
       .then((res) => res.json())
@@ -112,7 +219,7 @@ export default function TripManager({
       .catch(() =>
         setCurrentTripParticipants(selectedTrip.participants || [])
       );
-  }, [selectedTrip]);
+  }, [selectedTrip, sessionUserId, session]);
 
   const handleAddActivity = (a: Activity) =>
     setActivities((prev) => [...prev, a]);
@@ -213,20 +320,43 @@ export default function TripManager({
   };
 
   const requestDeleteTrip = (id: number) => {
-  setTripToDelete(id);
-  setConfirmOpen(true);
+    setTripToDelete(id);
+    setConfirmOpen(true);
   };
 
   const handleDeleteTrip = async () => {
-  if (!tripToDelete) return;
+    if (!tripToDelete) return;
 
-  await fetch(`/api/trips?tripId=${tripToDelete}`, { method: "DELETE" });
+    await fetch(`/api/trips?tripId=${tripToDelete}`, { method: "DELETE" });
 
+    setTrips((prev) => prev.filter((t) => t.id !== tripToDelete));
+    setSelectedTrip(null);
+    setTripToDelete(null);
+  };
 
-  setTrips((prev) => prev.filter((t) => t.id !== tripToDelete));
-  setSelectedTrip(null);
-  setTripToDelete(null);
-};
+  const requestLeaveTrip = () => {
+    setLeaveConfirmOpen(true);
+  };
+
+  const handleLeaveTrip = async () => {
+    if (!selectedTrip || !sessionUserId) return;
+    try {
+      const res = await fetch(`/api/trips/${selectedTrip.id}/participants/${sessionUserId}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        alert(`Nie udało się opuścić wyjazdu: ${data.error || "Błąd"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Wystąpił błąd");
+    } finally {
+      setLeaveConfirmOpen(false);
+    }
+  };
 
   return (
     <div className="!w-full !max-w-none min-h-screen bg-[#F8FAFC] !m-0 !p-0">
@@ -297,15 +427,21 @@ export default function TripManager({
         { }
         <div className="flex bg-blue-50/50 p-1.5 rounded-[1.5rem] mb-8 w-fit border border-blue-100/50 !ml-0">
           <button 
-            onClick={() => setActiveTab('all')}
-            className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeTab === 'all' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
+            onClick={() => {
+              setActiveTab('all');
+              setActiveMainView('trip');
+            }}
+            className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'all' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
           >
             Wszystkie wyjazdy
           </button>
           {session && (
             <button 
-              onClick={() => setActiveTab('my')}
-              className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeTab === 'my' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
+              onClick={() => {
+                setActiveTab('my');
+                setActiveMainView('trip');
+              }}
+              className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'my' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
             >
               Moje wyjazdy
             </button>
@@ -318,6 +454,71 @@ export default function TripManager({
           {/* LEWo */}
           <aside className="w-full lg:w-[480px] shrink-0 lg:fixed lg:top-56 lg:z-40">
             <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-blue-50">
+              
+              {session && (
+                <div className="flex flex-col gap-2 mb-6 pb-6 border-b border-blue-100/60">
+                  <button
+                    onClick={() => setActiveMainView('profile')}
+                    className={`w-full px-6 py-3.5 rounded-2xl text-sm font-black text-left transition-all flex items-center justify-between ${
+                      activeMainView === 'profile'
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 border border-blue-600'
+                        : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">👤 Mój profil</span>
+                    <span className="text-xs font-bold opacity-60">&gt;</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveMainView('friends')}
+                    className={`w-full px-6 py-3.5 rounded-2xl text-sm font-black text-left transition-all flex items-center justify-between ${
+                      activeMainView === 'friends'
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 border border-blue-600'
+                        : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">👥 Znajomi</span>
+                    <span className="text-xs font-bold opacity-60">&gt;</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveMainView('messages');
+                      setInitialChatFriendId(undefined);
+                    }}
+                    className={`w-full px-6 py-3.5 rounded-2xl text-sm font-black text-left transition-all flex items-center justify-between ${
+                      activeMainView === 'messages'
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 border border-blue-600'
+                        : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">💬 Wiadomości</span>
+                    {unreadMessagesCount > 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-black animate-pulse">
+                        {unreadMessagesCount}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold opacity-60">&gt;</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveMainView('notifications')}
+                    className={`w-full px-6 py-3.5 rounded-2xl text-sm font-black text-left transition-all flex items-center justify-between ${
+                      activeMainView === 'notifications'
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 border border-blue-600'
+                        : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">🔔 Powiadomienia</span>
+                    {unreadNotificationsCount > 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-black animate-pulse">
+                        {unreadNotificationsCount}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold opacity-60">&gt;</span>
+                    )}
+                  </button>
+                </div>
+              )}
+
               <h2 className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] mb-6 text-left">
                 {activeTab === 'my' ? 'Twoje Podróże' : 'Dostępne Podróże'}
               </h2>
@@ -325,9 +526,10 @@ export default function TripManager({
               <TripList
                 trips={displayedTrips}
                 activeTripId={selectedTrip?.id || null}
-                onSelectTrip={(id) =>
-                  setSelectedTrip(trips.find(t => t.id === id) || null)
-                }
+                onSelectTrip={(id) => {
+                  setSelectedTrip(trips.find(t => t.id === id) || null);
+                  setActiveMainView('trip');
+                }}
               />
 
               <button 
@@ -337,28 +539,65 @@ export default function TripManager({
                 <span>+</span> Nowy Wyjazd
               </button>
 
-              <div className="mt-6">
-                <FriendsSelection
-                  refreshKey={friendsVersion}
-                  onSelectTrip={(id) =>
-                    setSelectedTrip(trips.find(t => t.id === id) || null)
-                  }
-                />
-              </div>
-
-              <div className="mt-6">
-                <FriendsInvites onAction={() => setFriendsVersion(v => v + 1)} />
-              </div>
+              {tripInvites.length > 0 && (
+                <div className="mt-6 bg-amber-50 border border-amber-100 rounded-3xl p-6 text-left space-y-4 shadow-sm">
+                  <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-2">
+                    ✉ Zaproszenia na wyjazdy ({tripInvites.length})
+                  </h4>
+                  <div className="space-y-3">
+                    {tripInvites.map((invite) => (
+                      <div key={invite.id} className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col gap-2">
+                        <div>
+                          <p className="text-sm font-black text-amber-900">{invite.trip.name}</p>
+                          <p className="text-xs text-slate-500">Zaprasza: {invite.inviter.name || invite.inviter.email}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleResponseTripInvite(invite.id, "ACCEPT")}
+                            className="flex-1 py-2 bg-green-600 text-white text-xs font-black rounded-xl hover:bg-green-700 transition"
+                          >
+                            Akceptuj
+                          </button>
+                          <button
+                            onClick={() => handleResponseTripInvite(invite.id, "DECLINE")}
+                            className="flex-1 py-2 bg-slate-200 text-slate-600 text-xs font-black rounded-xl hover:bg-slate-300 transition"
+                          >
+                            Odrzuć
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </aside>
 
           {/* PRAWO */}
           <main className="flex-1 !w-full lg:!ml-[500px] min-w-0 !mr-0 pb-20">
-            {selectedTrip ? (
+            {activeMainView === 'profile' ? (
+              <ProfileModule />
+            ) : activeMainView === 'friends' ? (
+              <FriendsModule />
+            ) : activeMainView === 'messages' ? (
+              <MessagesModule initialFriendId={initialChatFriendId} />
+            ) : activeMainView === 'notifications' ? (
+              <NotificationsModule
+                onNavigateToMessages={(friendId) => {
+                  setInitialChatFriendId(friendId);
+                  setActiveMainView('messages');
+                }}
+                onNavigateToFriends={() => {
+                  setActiveMainView('friends');
+                }}
+                onRefreshTrips={fetchTripInvites}
+              />
+            ) : selectedTrip ? (
               <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-100/50 border border-blue-50 p-8 md:p-10 !w-full min-h-[600px]">
                 <TripTabs
                   trip={selectedTrip}
                   onDeleteTrip={requestDeleteTrip}
+                  onLeaveTrip={requestLeaveTrip}
                   userName={session?.user?.name || "Gość"}
 
                   activities={activities}
@@ -367,6 +606,7 @@ export default function TripManager({
                   todos={todos}
 
                   isReadOnly={isReadOnly}
+                  isParticipant={isParticipant}
 
                   onAddActivity={handleAddActivity}
                   onDeleteActivity={handleDeleteActivity}
@@ -425,6 +665,16 @@ export default function TripManager({
           setConfirmOpen(false);
           handleDeleteTrip();
         }}
+      />
+
+      <ConfirmModal
+        open={leaveConfirmOpen}
+        title="Opuścić wyjazd?"
+        description="Czy na pewno chcesz opuścić ten wyjazd? Nie będziesz mieć już dostępu do jego szczegółów."
+        confirmText="Opuść"
+        cancelText="Anuluj"
+        onCancel={() => setLeaveConfirmOpen(false)}
+        onConfirm={handleLeaveTrip}
       />
     </div>
   );

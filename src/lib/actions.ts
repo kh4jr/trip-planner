@@ -2,6 +2,9 @@
 
 import { db } from './db'
 import { revalidatePath } from 'next/cache'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { requireTripParticipant } from './tripAuth'
 
 export interface TripFormData {
   name: string;
@@ -50,7 +53,6 @@ export async function createTrip(
   }
 }
 
-
 export async function addExpense(
   tripId: number,
   data: {
@@ -60,6 +62,13 @@ export async function addExpense(
     category: string;
   }
 ) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const userId = Number(session.user.id);
+  await requireTripParticipant(tripId, userId);
+
   const expense = await db.expense.create({
     data: {
       description: data.description,
@@ -76,6 +85,18 @@ export async function addExpense(
 
 export async function deleteExpense(expenseId: number) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      throw new Error("UNAUTHORIZED");
+    }
+    const expense = await db.expense.findUnique({
+      where: { id: expenseId },
+      select: { tripId: true }
+    });
+    if (!expense) throw new Error("NOT_FOUND");
+    const userId = Number(session.user.id);
+    await requireTripParticipant(expense.tripId, userId);
+
     await db.expense.delete({
       where: { id: expenseId },
     });
@@ -90,6 +111,13 @@ export async function addNote(
   tripId: number,
   content: string
 ) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const userId = Number(session.user.id);
+  await requireTripParticipant(tripId, userId);
+
   const note = await db.note.create({
     data: {
       content,
@@ -101,8 +129,19 @@ export async function addNote(
   return note;
 }
 
-
 export async function toggleNote(noteId: number, isCompleted: boolean) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const note = await db.note.findUnique({
+    where: { id: noteId },
+    select: { tripId: true }
+  });
+  if (!note) throw new Error("NOT_FOUND");
+  const userId = Number(session.user.id);
+  await requireTripParticipant(note.tripId, userId);
+
   await db.note.update({
     where: { id: noteId },
     data: { isCompleted },
@@ -111,6 +150,18 @@ export async function toggleNote(noteId: number, isCompleted: boolean) {
 }
 
 export async function deleteNote(noteId: number) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const note = await db.note.findUnique({
+    where: { id: noteId },
+    select: { tripId: true }
+  });
+  if (!note) throw new Error("NOT_FOUND");
+  const userId = Number(session.user.id);
+  await requireTripParticipant(note.tripId, userId);
+
   await db.note.delete({ where: { id: noteId } });
   revalidatePath('/');
 }
@@ -120,6 +171,13 @@ export async function addTodoAction(
   name: string
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      throw new Error("UNAUTHORIZED");
+    }
+    const userId = Number(session.user.id);
+    await requireTripParticipant(tripId, userId);
+
     const todo = await db.tripItem.create({
       data: {
         name,
@@ -136,8 +194,19 @@ export async function addTodoAction(
   }
 }
 
-
 export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const todo = await db.tripItem.findUnique({
+    where: { id: todoId },
+    select: { tripId: true }
+  });
+  if (!todo) throw new Error("NOT_FOUND");
+  const userId = Number(session.user.id);
+  await requireTripParticipant(todo.tripId, userId);
+
   await db.tripItem.update({
     where: { id: todoId },
     data: { isCompleted }
@@ -146,6 +215,18 @@ export async function toggleTodoAction(todoId: number, isCompleted: boolean) {
 }
 
 export async function deleteTodoAction(todoId: number) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED");
+  }
+  const todo = await db.tripItem.findUnique({
+    where: { id: todoId },
+    select: { tripId: true }
+  });
+  if (!todo) throw new Error("NOT_FOUND");
+  const userId = Number(session.user.id);
+  await requireTripParticipant(todo.tripId, userId);
+
   await db.tripItem.delete({ where: { id: todoId } });
   revalidatePath('/');
 }
