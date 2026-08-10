@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react";
 import { FullTrip } from "@/types/fullTrip";
 import { useEffect } from "react";
 import { errorAlert, successAlert } from "@/lib/alert";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface PendingJoinRequest extends TripRequest {
   user: {
@@ -70,7 +71,15 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function TripTabs(props: TripTabsProps) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('plan');
+  const getTabLabel = (id: string) => {
+    if (id === 'plan') return t('plan');
+    if (id === 'budget') return t('expenses');
+    if (id === 'tasks') return t('tasks');
+    if (id === 'notes') return t('notes');
+    return id;
+  };
   const [isAddingActivity, setIsAddingActivity] = useState(false);
   const [newActivityName, setNewActivityName] = useState("");
   const [newActivityTime, setNewActivityTime] = useState("");
@@ -660,7 +669,7 @@ export default function TripTabs(props: TripTabsProps) {
               shadow-md
             "
           >
-            Usuń wyjazd
+            {t('deleteTrip')}
           </button>
         )}
         {props.isParticipant && props.isReadOnly && (
@@ -676,7 +685,7 @@ export default function TripTabs(props: TripTabsProps) {
               shadow-md
             "
           >
-            Opuść wyjazd
+            {t('leaveTrip')}
           </button>
         )}
 
@@ -728,7 +737,7 @@ export default function TripTabs(props: TripTabsProps) {
                   : '!text-blue-400 hover:!text-blue-600'
               }`}
             >
-              {tab.label}
+              {getTabLabel(tab.id)}
             </button>
           ))}
         </div>

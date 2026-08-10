@@ -1,7 +1,27 @@
 @import "tailwindcss";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--bg-body);
+  --color-foreground: var(--text-primary);
+}
+
+:root {
+  --bg-body: #F8FAFC; 
+  --bg-card: #ffffff;
+  --text-primary: #0f172a;
+  --text-header: #2563eb;
+  --border-primary: #e2e8f0;
+}
+
+.dark {
+  --bg-body: #090d16; 
+  --bg-card: #151f32;
+  --text-primary: #f8fafc;
+  --text-header: #60a5fa;
+  --border-primary: #1e293b;
+}
 
 html,
 body {
@@ -11,24 +31,11 @@ body {
   padding: 0;
 }
 
-html.dark, :root {
-  --bg-body: #F0F7FF; 
-  --bg-card: #ffffff;
-  --text-primary: #1e3a8a;
-  --text-header: #2563eb;
-  --border-primary: #e0e7ff;
-}
-
 @layer base {
-  :root {
-    --bg-body: #F0F7FF;
-    --bg-card: #ffffff;
-    --text-primary: #1e3a8a;
-  }
-
   body {
     @apply antialiased min-h-screen w-full; 
     background-color: var(--bg-body);
+    color: var(--text-primary);
     margin: 0;
     padding: 0;
     display: block; 
@@ -51,8 +58,111 @@ main, #__next {
     @apply p-6 rounded-[2rem] shadow-xl shadow-blue-100/50 border border-blue-50 transition-all duration-300;
 }
 
-html.dark .bg-white {
+/* Global Dark Mode overrides */
+.dark body {
+  background-color: var(--bg-body) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Overriding white backgrounds with opacity variants */
+.dark .bg-white {
   background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-white\/90 {
+  background-color: rgba(21, 31, 50, 0.9) !important;
+}
+
+.dark .bg-white\/80 {
+  background-color: rgba(21, 31, 50, 0.8) !important;
+}
+
+.dark .bg-white\/80:hover {
+  background-color: rgba(30, 41, 59, 1) !important;
+}
+
+.dark .bg-white\/70 {
+  background-color: rgba(21, 31, 50, 0.7) !important;
+}
+
+.dark .bg-white\/50 {
+  background-color: rgba(21, 31, 50, 0.5) !important;
+}
+
+/* Main page outer wrapper background fix */
+.dark [class*="bg-[#F8FAFC]"],
+.dark .bg-\[\#F8FAFC\] {
+  background-color: var(--bg-body) !important;
+}
+
+/* Specific text color conversions for readability in dark mode */
+.dark .text-blue-900,
+.dark .text-slate-900,
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4 {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-blue-600 {
+  color: var(--text-header) !important;
+}
+
+.dark .text-blue-400,
+.dark .text-blue-500 {
+  color: var(--text-header) !important;
+}
+
+/* Inactive tabs text color readability fix */
+.dark [class*="text-blue-300"] {
+  color: #93c5fd !important;
+}
+
+.dark [class*="text-blue-300"]:hover {
+  color: #60a5fa !important;
+}
+
+/* Border styling in dark mode */
+.dark .border-blue-50, 
+.dark .border-blue-100,
+.dark .border-blue-200 {
+  border-color: var(--border-primary) !important;
+}
+
+/* blue-50 boxes and panels */
+.dark .bg-blue-50 {
+  background-color: rgba(30, 41, 59, 0.6) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-blue-50\/50, 
+.dark .bg-blue-50\/30 {
+  background-color: rgba(30, 41, 59, 0.4) !important;
+}
+
+/* Active elements in navigation pills/tabs */
+.dark .bg-white.shadow-lg.text-blue-600 {
+  background-color: #1e293b !important;
+  color: var(--text-primary) !important;
+  box-shadow: none !important;
+}
+
+/* Form controls */
+.dark input, 
+.dark textarea, 
+.dark select {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+/* General cleanups */
+.dark .shadow-xl,
+.dark .shadow-2xl,
+.dark .shadow-lg {
+  box-shadow: none !important;
 }
 
 .hover-lift {

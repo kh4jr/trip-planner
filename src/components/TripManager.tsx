@@ -23,6 +23,9 @@ import ProfileModule from "@/components/ProfileModule";
 import FriendsModule from "@/components/FriendsModule";
 import MessagesModule from "@/components/MessagesModule";
 import NotificationsModule from "@/components/NotificationsModule";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { useLanguage } from "@/components/LanguageContext";
 
 
 interface TripManagerProps {
@@ -44,6 +47,7 @@ export default function TripManager({
   session,
   allAvailablePeople,
   }: TripManagerProps) {
+  const { t, language } = useLanguage();
   const [trips, setTrips] = useState<FullTrip[]>(initialTrips);
   const [selectedTrip, setSelectedTrip] = useState<FullTrip | null>(
     initialTrips[0] || null
@@ -377,6 +381,8 @@ export default function TripManager({
         </Link>
 
         <div className="flex items-center space-x-6">
+          <LanguageSwitcher />
+          <ThemeSwitcher />
           {session ? (
             <div className="flex items-center gap-3">
               { }
@@ -392,7 +398,7 @@ export default function TripManager({
                     {session.user?.name}
                   </p>
                   <span className="text-[9px] text-blue-400 font-bold uppercase tracking-wider group-hover:text-blue-500">
-                    Twój profil
+                    {t('yourProfile')}
                   </span>
                 </div>
               </Link>
@@ -401,10 +407,10 @@ export default function TripManager({
               <button 
                 onClick={() => signOut()} 
                 className="p-2 px-3 hover:bg-red-50 rounded-xl transition-all group"
-                title="Wyloguj się"
+                title={t('logout')}
               >
                 <span className="text-[10px] text-red-400 group-hover:text-red-600 font-black uppercase tracking-widest transition-colors">
-                  Wyloguj
+                  {t('logout')}
                 </span>
               </button>
             </div>
@@ -413,7 +419,7 @@ export default function TripManager({
               onClick={() => setIsLoggingIn(true)} 
               className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-black rounded-2xl shadow-xl shadow-blue-100 transition-all hover:scale-105"
             >
-              Zaloguj się
+              {t('login')}
             </button>
           )}
         </div>
@@ -433,7 +439,7 @@ export default function TripManager({
             }}
             className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'all' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
           >
-            Wszystkie wyjazdy
+            {t('allTrips')}
           </button>
           {session && (
             <button 
@@ -443,7 +449,7 @@ export default function TripManager({
               }}
               className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'my' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
             >
-              Moje wyjazdy
+              {t('myTrips')}
             </button>
           )}
         </div>
@@ -465,7 +471,7 @@ export default function TripManager({
                         : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
                     }`}
                   >
-                    <span className="flex items-center gap-2">👤 Mój profil</span>
+                    <span className="flex items-center gap-2">{t('myProfile')}</span>
                     <span className="text-xs font-bold opacity-60">&gt;</span>
                   </button>
                   <button
@@ -476,7 +482,7 @@ export default function TripManager({
                         : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
                     }`}
                   >
-                    <span className="flex items-center gap-2">👥 Znajomi</span>
+                    <span className="flex items-center gap-2">{t('friends')}</span>
                     <span className="text-xs font-bold opacity-60">&gt;</span>
                   </button>
                   <button
@@ -490,7 +496,7 @@ export default function TripManager({
                         : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
                     }`}
                   >
-                    <span className="flex items-center gap-2">💬 Wiadomości</span>
+                    <span className="flex items-center gap-2">{t('messages')}</span>
                     {unreadMessagesCount > 0 ? (
                       <span className="px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-black animate-pulse">
                         {unreadMessagesCount}
@@ -507,7 +513,7 @@ export default function TripManager({
                         : 'bg-blue-50/30 text-blue-500 hover:text-blue-600 hover:bg-blue-50/60 border border-transparent'
                     }`}
                   >
-                    <span className="flex items-center gap-2">🔔 Powiadomienia</span>
+                    <span className="flex items-center gap-2">{t('notifications')}</span>
                     {unreadNotificationsCount > 0 ? (
                       <span className="px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-black animate-pulse">
                         {unreadNotificationsCount}
@@ -520,7 +526,7 @@ export default function TripManager({
               )}
 
               <h2 className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] mb-6 text-left">
-                {activeTab === 'my' ? 'Twoje Podróże' : 'Dostępne Podróże'}
+                {activeTab === 'my' ? t('myTrips') : t('allTrips')}
               </h2>
 
               <TripList
@@ -536,33 +542,33 @@ export default function TripManager({
                 onClick={() => setIsCreating(true)}
                 className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95"
               >
-                <span>+</span> Nowy Wyjazd
+                <span>+</span> {t('addTrip')}
               </button>
 
               {tripInvites.length > 0 && (
                 <div className="mt-6 bg-amber-50 border border-amber-100 rounded-3xl p-6 text-left space-y-4 shadow-sm">
                   <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-2">
-                    ✉ Zaproszenia na wyjazdy ({tripInvites.length})
+                    ✉ {t('invitations')} ({tripInvites.length})
                   </h4>
                   <div className="space-y-3">
                     {tripInvites.map((invite) => (
                       <div key={invite.id} className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col gap-2">
                         <div>
                           <p className="text-sm font-black text-amber-900">{invite.trip.name}</p>
-                          <p className="text-xs text-slate-500">Zaprasza: {invite.inviter.name || invite.inviter.email}</p>
+                          <p className="text-xs text-slate-500">{t('invitedBy')}: {invite.inviter.name || invite.inviter.email}</p>
                         </div>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleResponseTripInvite(invite.id, "ACCEPT")}
                             className="flex-1 py-2 bg-green-600 text-white text-xs font-black rounded-xl hover:bg-green-700 transition"
                           >
-                            Akceptuj
+                            {t('accept')}
                           </button>
                           <button
                             onClick={() => handleResponseTripInvite(invite.id, "DECLINE")}
                             className="flex-1 py-2 bg-slate-200 text-slate-600 text-xs font-black rounded-xl hover:bg-slate-300 transition"
                           >
-                            Odrzuć
+                            {t('decline')}
                           </button>
                         </div>
                       </div>
@@ -598,7 +604,7 @@ export default function TripManager({
                   trip={selectedTrip}
                   onDeleteTrip={requestDeleteTrip}
                   onLeaveTrip={requestLeaveTrip}
-                  userName={session?.user?.name || "Gość"}
+                  userName={session?.user?.name || (language === 'pl' ? 'Gość' : 'Guest')}
 
                   activities={activities}
                   expenses={expenses}
@@ -627,10 +633,10 @@ export default function TripManager({
               <div className="h-[500px] !w-full border-4 border-dashed border-blue-50 rounded-[3.5rem] bg-blue-50/20 flex flex-col items-center justify-center text-center p-10">
                 <div className="text-5xl mb-6 opacity-40">🗺️</div>
                 <h3 className="text-xl font-black text-blue-900 mb-2">
-                  Brak wybranego celu
+                  {t('noSelectedTrip')}
                 </h3>
                 <p className="text-blue-300 font-bold max-w-xs">
-                  Wybierz wyjazd z listy po lewej stronie, aby zarządzać planem.
+                  {t('selectTripMessage')}
                 </p>
               </div>
             )}
@@ -653,10 +659,10 @@ export default function TripManager({
       { }
       <ConfirmModal
         open={confirmOpen}
-        title="Usunąć wyjazd?"
-        description="Ta operacja jest nieodwracalna. Wszystkie dane wyjazdu zostaną usunięte."
-        confirmText="Usuń"
-        cancelText="Anuluj"
+        title={t('confirmDeleteTitle')}
+        description={t('confirmDeleteDesc')}
+        confirmText={t('deleteAction')}
+        cancelText={t('cancel')}
         onCancel={() => {
           setConfirmOpen(false);
           setTripToDelete(null);
@@ -669,10 +675,10 @@ export default function TripManager({
 
       <ConfirmModal
         open={leaveConfirmOpen}
-        title="Opuścić wyjazd?"
-        description="Czy na pewno chcesz opuścić ten wyjazd? Nie będziesz mieć już dostępu do jego szczegółów."
-        confirmText="Opuść"
-        cancelText="Anuluj"
+        title={t('confirmLeaveTitle')}
+        description={t('confirmLeaveDesc')}
+        confirmText={t('leaveAction')}
+        cancelText={t('cancel')}
         onCancel={() => setLeaveConfirmOpen(false)}
         onConfirm={handleLeaveTrip}
       />
