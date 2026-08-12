@@ -71,7 +71,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function TripTabs(props: TripTabsProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState('plan');
   const getTabLabel = (id: string) => {
     if (id === 'plan') return t('plan');
@@ -767,79 +767,85 @@ export default function TripTabs(props: TripTabsProps) {
               </span>
             </div>
 
-            {isAddingActivity ? (
-              <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-100 space-y-4">
-                <input
-                  placeholder="Co planujesz?"
-                  className="w-full p-4 bg-white border border-blue-50 rounded-xl outline-none font-bold !text-slate-900 placeholder:!text-slate-400"
-                  value={newActivityName}
-                  onChange={(e) => setNewActivityName(e.target.value)}
-                />
-                <input
-                  type="datetime-local"
-                  className="w-full-1/2 p-4 bg-white border border-blue-300 rounded-xl outline-none font-bold !text-slate-900"
-                  value={newActivityTime}
-                  onChange={(e) => setNewActivityTime(e.target.value)}
-                  min={formatDatetimeLocal(props.trip.startDate, false)}
-                  max={formatDatetimeLocal(props.trip.endDate, true)}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveActivity}
-                    disabled={loading}
-                    className="flex-1 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg"
-                  >
-                    Zapisz
-                  </button>
-                  <button
-                    onClick={() => setIsAddingActivity(false)}
-                    className="px-6 bg-gray-100 !text-slate-600 rounded-xl font-bold"
-                  >
-                    Anuluj
-                  </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full">
+              {isAddingActivity ? (
+                <div className="bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm space-y-4 flex flex-col justify-between min-h-[180px]">
+                  <div className="space-y-3 text-left">
+                    <input
+                      placeholder="Co planujesz?"
+                      className="w-full p-4 bg-white border border-blue-100 rounded-xl outline-none font-bold !text-slate-900 placeholder:!text-slate-400 text-sm"
+                      value={newActivityName}
+                      onChange={(e) => setNewActivityName(e.target.value)}
+                    />
+                    <input
+                      type="datetime-local"
+                      className="w-full p-4 bg-white border border-blue-100 rounded-xl outline-none font-bold !text-slate-900 text-sm"
+                      value={newActivityTime}
+                      onChange={(e) => setNewActivityTime(e.target.value)}
+                      min={formatDatetimeLocal(props.trip.startDate, false)}
+                      max={formatDatetimeLocal(props.trip.endDate, true)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveActivity}
+                      disabled={loading}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black py-2.5 rounded-xl shadow-md text-xs transition active:scale-95"
+                    >
+                      Zapisz
+                    </button>
+                    <button
+                      onClick={() => setIsAddingActivity(false)}
+                      className="px-4 bg-gray-100 hover:bg-gray-200 !text-slate-600 rounded-xl font-bold text-xs transition"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsAddingActivity(true)}
-                className="w-full py-10 border-4 border-dashed border-blue-50 rounded-[2.5rem] !text-slate-300 hover:!text-blue-500 font-black text-xl transition-all"
-              >
-                + Zaplanuj nową przygodę
-              </button>
-            )}
+              ) : (
+                <button
+                  onClick={() => setIsAddingActivity(true)}
+                  className="border-4 border-dashed border-blue-50 hover:border-blue-100 rounded-[2rem] !text-slate-300 hover:!text-blue-500 font-black text-lg transition-all flex flex-col items-center justify-center min-h-[180px] bg-slate-50/10 hover:bg-slate-50/40 cursor-pointer"
+                >
+                  <span className="text-2xl">➕</span>
+                  <span className="mt-2 text-sm font-bold uppercase tracking-wider">{language === 'pl' ? 'Planuj przygodę' : 'Plan activity'}</span>
+                </button>
+              )}
 
-            <div className="grid gap-4">
               {props.activities?.map((act) => (
                 <div
                   key={act.id}
-                  className="flex items-center gap-6 bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm group"
+                  className="bg-white p-8 rounded-[2rem] border border-blue-50 shadow-sm flex flex-col justify-between min-h-[180px] group transition-all hover:border-blue-100"
                 >
-                  <div className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-xs shrink-0 whitespace-nowrap">
-                    {new Date(act.time).toLocaleTimeString("pl-PL", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    •{" "}
-                    {new Date(act.time).toLocaleDateString("pl-PL", {
-                      day: "2-digit",
-                      month: "2-digit",
-                    })}
+                  <div className="flex items-center justify-between w-full">
+                    <div className="bg-blue-600 text-white px-3 py-1 rounded-lg font-black text-[9px] tracking-wider uppercase">
+                      {new Date(act.time).toLocaleTimeString("pl-PL", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      •{" "}
+                      {new Date(act.time).toLocaleDateString("pl-PL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                    </div>
+                    {props.isParticipant && (
+                      <button
+                        onClick={() => handleDeleteActivity(act.id)}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-1"
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </div>
 
-                  <p className="flex-1 font-black !text-blue-900 text-lg truncate text-left">
+                  <p className="font-bold !text-blue-900 text-lg text-left mt-4 mb-2 flex-1">
                     {act.name}
                   </p>
 
-                  <span className="text-[11px] font-black !text-blue-400 whitespace-nowrap">
-                    {act.createdByName ?? "—"}
-                  </span>
-
-                  <button
-                    onClick={() => handleDeleteActivity(act.id)}
-                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:scale-125 transition-all"
-                  >
-                    🗑️
-                  </button>
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase !text-slate-400 border-t border-blue-50/50 pt-3 mt-auto">
+                    <span>{language === 'pl' ? 'autor' : 'author'}: {act.createdByName ?? "—"}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -937,9 +943,14 @@ export default function TripTabs(props: TripTabsProps) {
                 </div>
               </div>
             ) : (
-              <button onClick={() => setIsAddingExpense(true)} className="w-full py-8 bg-blue-900 text-white font-black rounded-[2rem] text-xl shadow-lg">
-                + Zapisz nowy wydatek
+            <div className="flex justify-start text-left">
+              <button 
+                onClick={() => setIsAddingExpense(true)} 
+                className="px-8 py-4 bg-blue-900 hover:bg-blue-800 text-white font-black rounded-2xl text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+              >
+                {language === 'pl' ? '+ Zapisz nowy wydatek' : '+ Add new expense'}
               </button>
+            </div>
             )}
 
             <div className="space-y-4">

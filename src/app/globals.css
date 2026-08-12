@@ -58,6 +58,55 @@ main, #__next {
     @apply p-6 rounded-[2rem] shadow-xl shadow-blue-100/50 border border-blue-50 transition-all duration-300;
 }
 
+/* Premium Form Input Styling */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border: 1.5px solid #cbd5e1 !important; /* slate-300 */
+  transition: all 0.2s ease-in-out !important;
+  outline: none !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus {
+  border-color: #2563eb !important; /* blue-600 */
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15) !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):disabled,
+select:disabled,
+textarea:disabled {
+  background-color: #f1f5f9 !important; /* slate-100 */
+  border-color: #e2e8f0 !important; /* slate-200 */
+  color: #94a3b8 !important; /* slate-400 */
+  cursor: not-allowed !important;
+}
+
+/* Dark mode inputs */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.25) !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):disabled,
+.dark select:disabled,
+.dark textarea:disabled {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #64748b !important;
+}
+
 /* Global Dark Mode overrides */
 .dark body {
   background-color: var(--bg-body) !important;
@@ -147,15 +196,6 @@ main, #__next {
   background-color: #1e293b !important;
   color: var(--text-primary) !important;
   box-shadow: none !important;
-}
-
-/* Form controls */
-.dark input, 
-.dark textarea, 
-.dark select {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #334155 !important;
 }
 
 /* General cleanups */

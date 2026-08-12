@@ -437,7 +437,7 @@ export default function TripManager({
               setActiveTab('all');
               setActiveMainView('trip');
             }}
-            className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'all' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
+            className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'all' ? 'bg-white shadow-lg text-blue-600' : 'text-slate-500 dark:text-blue-300 hover:text-blue-600 dark:hover:text-blue-100'}`}
           >
             {t('allTrips')}
           </button>
@@ -447,7 +447,7 @@ export default function TripManager({
                 setActiveTab('my');
                 setActiveMainView('trip');
               }}
-              className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'my' ? 'bg-white shadow-lg text-blue-600' : 'text-blue-300 hover:text-blue-500'}`}
+              className={`px-8 py-3 rounded-xl text-sm font-black transition-all ${activeMainView === 'trip' && activeTab === 'my' ? 'bg-white shadow-lg text-blue-600' : 'text-slate-500 dark:text-blue-300 hover:text-blue-600 dark:hover:text-blue-100'}`}
             >
               {t('myTrips')}
             </button>

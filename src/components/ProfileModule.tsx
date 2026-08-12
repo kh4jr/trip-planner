@@ -81,7 +81,7 @@ export default function ProfileModule() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-xl">
         <div className="space-y-2">
           <label className="text-xs font-black text-blue-900 uppercase tracking-widest block">
             Adres E-mail (Niezmienny)
