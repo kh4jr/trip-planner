@@ -1,0 +1,146 @@
+{
+  "warszawa": {
+    "coordinates": [21.0122, 52.2297],
+    "countryCode": "PL"
+  },
+  "warsaw": {
+    "coordinates": [21.0122, 52.2297],
+    "countryCode": "PL"
+  },
+  "władysławowo": {
+    "coordinates": [18.4287, 54.7909],
+    "countryCode": "PL"
+  },
+  "wladyslawowo": {
+    "coordinates": [18.4287, 54.7909],
+    "countryCode": "PL"
+  },
+  "kraków": {
+    "coordinates": [19.9449, 50.0647],
+    "countryCode": "PL"
+  },
+  "krakow": {
+    "coordinates": [19.9449, 50.0647],
+    "countryCode": "PL"
+  },
+  "gdańsk": {
+    "coordinates": [18.6466, 54.3520],
+    "countryCode": "PL"
+  },
+  "gdansk": {
+    "coordinates": [18.6466, 54.3520],
+    "countryCode": "PL"
+  },
+  "wrocław": {
+    "coordinates": [17.0385, 51.1079],
+    "countryCode": "PL"
+  },
+  "wroclaw": {
+    "coordinates": [17.0385, 51.1079],
+    "countryCode": "PL"
+  },
+  "poznań": {
+    "coordinates": [16.9252, 52.4064],
+    "countryCode": "PL"
+  },
+  "poznan": {
+    "coordinates": [16.9252, 52.4064],
+    "countryCode": "PL"
+  },
+  "wetlina, polska": {
+    "coordinates": [22.4705, 49.1554],
+    "countryCode": "PL"
+  },
+  "bieszczady": {
+    "coordinates": [22.4705, 49.1554],
+    "countryCode": "PL"
+  },
+  "rzym, włochy": {
+    "coordinates": [12.4829, 41.8933],
+    "countryCode": "IT"
+  },
+  "włochy": {
+    "coordinates": [12.4829, 41.8933],
+    "countryCode": "IT"
+  },
+  "mikołajki, polska": {
+    "coordinates": [21.5768, 53.7788],
+    "countryCode": "PL"
+  },
+  "mazury": {
+    "coordinates": [21.5768, 53.7788],
+    "countryCode": "PL"
+  },
+  "budapeszt, węgry": {
+    "coordinates": [19.0402, 47.4979],
+    "countryCode": "HU"
+  },
+  "węgry": {
+    "coordinates": [19.0402, 47.4979],
+    "countryCode": "HU"
+  },
+  "karłów, polska": {
+    "coordinates": [16.3387, 50.4727],
+    "countryCode": "PL"
+  },
+  "sudety": {
+    "coordinates": [16.3387, 50.4727],
+    "countryCode": "PL"
+  },
+  "paryż, francja": {
+    "coordinates": [2.3522, 48.8566],
+    "countryCode": "FR"
+  },
+  "francja": {
+    "coordinates": [2.3522, 48.8566],
+    "countryCode": "FR"
+  },
+  "zakopane, polska": {
+    "coordinates": [19.9496, 49.2992],
+    "countryCode": "PL"
+  },
+  "tatry": {
+    "coordinates": [19.9496, 49.2992],
+    "countryCode": "PL"
+  },
+  "barcelona, hiszpania": {
+    "coordinates": [2.1734, 41.3851],
+    "countryCode": "ES"
+  },
+  "hiszpania": {
+    "coordinates": [2.1734, 41.3851],
+    "countryCode": "ES"
+  },
+  "kołobrzeg, polska": {
+    "coordinates": [16.1759, 54.1760],
+    "countryCode": "PL"
+  },
+  "kołobrzeg": {
+    "coordinates": [16.1759, 54.1760],
+    "countryCode": "PL"
+  },
+  "bałtyk": {
+    "coordinates": [16.1759, 54.1760],
+    "countryCode": "PL"
+  },
+  "praga, czechy": {
+    "coordinates": [14.4378, 50.0755],
+    "countryCode": "CZ"
+  },
+  "czechy": {
+    "coordinates": [14.4378, 50.0755],
+    "countryCode": "CZ"
+  },
+  "toronto": {
+    "coordinates": [-79.3832, 43.6532],
+    "countryCode": "CA"
+  },
+  "miami": {
+    "coordinates": [-80.1918, 25.7617],
+    "countryCode": "US"
+  },
+  "stolica": {
+    "coordinates": [21.0122, 52.2297],
+    "countryCode": "PL"
+  }
+}

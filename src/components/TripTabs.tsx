@@ -584,7 +584,7 @@ export default function TripTabs(props: TripTabsProps) {
 </div>
     <div className="flex flex-wrap items-center gap-4">
       <p className="text-lg !text-blue-600 font-black bg-blue-50 px-5 py-2 rounded-2xl">
-        📍 {props.trip.location || props.trip.destination || "Brak lokalizacji"}
+        📍 {props.trip.destination || props.trip.location || "Brak lokalizacji"}
       </p>
       
       <div className="relative flex items-center">

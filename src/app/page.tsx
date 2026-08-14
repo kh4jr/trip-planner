@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import TripManager from "@/components/TripManager";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from '@/lib/auth';
 
 import { FullTrip } from "@/types/fullTrip";
 

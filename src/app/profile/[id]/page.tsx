@@ -1,18 +1,20 @@
 import React from "react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from '@/lib/auth';
 import { db } from "@/lib/db";
 import { redirect, notFound } from "next/navigation";
 import WorldMap from "@/components/WorldMap";
+import { geocode } from "@/lib/geocoder";
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function FriendProfilePage({ params }: PageProps) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
@@ -20,7 +22,7 @@ export default async function FriendProfilePage({ params }: PageProps) {
   }
 
   const viewerId = Number(session.user.id);
-  const profileUserId = Number(params.id);
+  const profileUserId = Number(resolvedParams.id);
 
   if (viewerId === profileUserId) {
     redirect("/profile");
@@ -91,34 +93,34 @@ export default async function FriendProfilePage({ params }: PageProps) {
     userTrips.map((t) => t.destination || t.location).filter(Boolean)
   ).size;
 
-  const visitedCountries = ["PL"];
+  const visitedCountries = new Set<string>();
+  const plannedCountries = new Set<string>();
+  const uniquePinsMap = new Map<string, [number, number]>();
 
-  const destinationCoordinates: Record<string, [number, number]> = {
-    warszawa: [21.0122, 52.2297],
-    warsaw: [21.0122, 52.2297],
-    władysławowo: [18.4287, 54.7909],
-    wladyslawowo: [18.4287, 54.7909],
-    kraków: [19.9449, 50.0647],
-    krakow: [19.9449, 50.0647],
-    gdańsk: [18.6466, 54.3520],
-    gdansk: [18.6466, 54.3520],
-    wrocław: [17.0385, 51.1079],
-    wroclaw: [17.0385, 51.1079],
-    poznań: [16.9252, 52.4064],
-    poznan: [16.9252, 52.4064],
-  };
+  for (const trip of userTrips) {
+    const name = trip.destination || trip.location || "";
+    if (!name) continue;
 
-  const mapPins = userTrips
-    .map((trip) => {
-      const name = trip.destination || trip.location || "";
-      const cleanName = name.toLowerCase().trim();
-      const coords = destinationCoordinates[cleanName];
-      if (coords) {
-        return { name, coordinates: coords };
+    const resolved = await geocode(name);
+    if (resolved) {
+      uniquePinsMap.set(name, resolved.coordinates);
+      const isFinished = trip.endDate && new Date(trip.endDate) < new Date();
+      if (isFinished) {
+        visitedCountries.add(resolved.countryCode);
+      } else {
+        plannedCountries.add(resolved.countryCode);
       }
-      return null;
-    })
-    .filter((pin): pin is { name: string; coordinates: [number, number] } => pin !== null);
+    }
+  }
+
+  for (const code of visitedCountries) {
+    plannedCountries.delete(code);
+  }
+
+  const mapPins = Array.from(uniquePinsMap.entries()).map(([name, coords]) => ({
+    name,
+    coordinates: coords,
+  }));
 
   return (
     <div className="!w-full min-h-screen bg-[#F8FAFC] !p-6 md:!p-12 text-left">
@@ -198,7 +200,11 @@ export default async function FriendProfilePage({ params }: PageProps) {
               Mapa Odkryć
             </h3>
             <div className="w-full min-h-[300px] bg-blue-50/30 rounded-[2.5rem] border-2 border-dashed border-blue-100 flex items-center justify-center overflow-hidden">
-              <WorldMap visited={visitedCountries} pins={mapPins} />
+              <WorldMap 
+                visited={Array.from(visitedCountries)} 
+                planned={Array.from(plannedCountries)} 
+                pins={mapPins} 
+              />
             </div>
           </div>
         </div>
