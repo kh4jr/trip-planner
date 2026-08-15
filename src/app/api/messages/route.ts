@@ -167,7 +167,7 @@ export async function POST(req: Request) {
 
     const senderId = Number(session.user.id);
     const body = await req.json();
-    const { receiverId, content } = body;
+    const { receiverId, content, notify = true } = body;
 
     if (!receiverId || !content || content.trim() === "") {
       return NextResponse.json({ error: "Invalid data" }, { status: 400 });
@@ -181,15 +181,17 @@ export async function POST(req: Request) {
       },
     });
 
-    // Create a notification for the receiver
-    await db.notification.create({
-      data: {
-        userId: Number(receiverId),
-        type: "NEW_MESSAGE",
-        content: `Nowa wiadomość od ${session.user.name || session.user.email}: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`,
-        link: `/messages?friendId=${senderId}`,
-      },
-    });
+    // Create a notification for the receiver if notify is true
+    if (notify) {
+      await db.notification.create({
+        data: {
+          userId: Number(receiverId),
+          type: "NEW_MESSAGE",
+          content: `Nowa wiadomość od ${session.user.name || session.user.email}: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`,
+          link: `/messages?friendId=${senderId}`,
+        },
+      });
+    }
 
     return NextResponse.json(message);
   } catch (error) {

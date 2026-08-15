@@ -11,6 +11,7 @@ type Notification = {
   isRead: boolean;
   createdAt: string;
   link: string | null;
+  emoji: string | null;
 };
 
 export default function NotificationsModule({
@@ -27,9 +28,82 @@ export default function NotificationsModule({
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [alert, setAlert] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // States for sending custom notifications
+  const [activeTab, setActiveTab] = useState<"inbox" | "send">("inbox");
+  const [friends, setFriends] = useState<{ id: number; name: string | null; email: string }[]>([]);
+  const [trips, setTrips] = useState<{ id: number; name: string }[]>([]);
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string>("");
+  const [selectedTripId, setSelectedTripId] = useState<string>("");
+  const [customContent, setCustomContent] = useState<string>("");
+  const [selectedEmoji, setSelectedEmoji] = useState<string>("🔔");
+  const [sendingNotif, setSendingNotif] = useState<boolean>(false);
+
   useEffect(() => {
     fetchNotifications();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "send") {
+      fetchFriendsAndTrips();
+    }
+  }, [activeTab]);
+
+  const fetchFriendsAndTrips = async () => {
+    try {
+      const [friendsRes, tripsRes] = await Promise.all([
+        fetch("/api/friends"),
+        fetch("/api/trips"),
+      ]);
+      if (friendsRes.ok) {
+        setFriends(await friendsRes.json());
+      }
+      if (tripsRes.ok) {
+        setTrips(await tripsRes.json());
+      }
+    } catch (err) {
+      console.error("Error loading friends/trips:", err);
+    }
+  };
+
+  const handleSendCustomNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRecipientId || !customContent.trim() || sendingNotif) return;
+
+    setSendingNotif(true);
+    setAlert(null);
+
+    try {
+      const link = selectedTripId ? `/trips/${selectedTripId}` : null;
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientId: Number(selectedRecipientId),
+          content: customContent.trim(),
+          emoji: selectedEmoji,
+          link,
+        }),
+      });
+
+      if (res.ok) {
+        setAlert({ type: "success", text: "Powiadomienie zostało pomyślnie wysłane!" });
+        setCustomContent("");
+        setSelectedRecipientId("");
+        setSelectedTripId("");
+        setSelectedEmoji("🔔");
+        setActiveTab("inbox");
+        fetchNotifications();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Nie udało się wysłać powiadomienia.");
+      }
+    } catch (err) {
+      const error = err as Error;
+      setAlert({ type: "error", text: error.message || "Błąd sieci." });
+    } finally {
+      setSendingNotif(false);
+    }
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -180,8 +254,9 @@ export default function NotificationsModule({
     return match ? match[1] : "";
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
+  const getIcon = (n: Notification) => {
+    if (n.emoji) return n.emoji;
+    switch (n.type) {
       case "FRIEND_REQUEST":
         return "👤➕";
       case "FRIEND_ACCEPTED":
@@ -220,7 +295,7 @@ export default function NotificationsModule({
           </div>
         </div>
 
-        {notifications.length > 0 && (
+        {notifications.length > 0 && activeTab === "inbox" && (
           <div className="flex gap-2">
             <button
               onClick={() => handleMarkAsRead()}
@@ -238,99 +313,207 @@ export default function NotificationsModule({
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-blue-50">
+        <button
+          onClick={() => { setActiveTab("inbox"); setAlert(null); }}
+          className={`flex-1 pb-4 text-sm font-black transition-all border-b-2 ${
+            activeTab === "inbox"
+              ? "border-blue-600 text-blue-900"
+              : "border-transparent text-slate-400 hover:text-slate-500"
+          }`}
+        >
+          Skrzynka odbiorcza ({notifications.filter((n) => !n.isRead).length} nowe)
+        </button>
+        <button
+          onClick={() => { setActiveTab("send"); setAlert(null); }}
+          className={`flex-1 pb-4 text-sm font-black transition-all border-b-2 ${
+            activeTab === "send"
+              ? "border-blue-600 text-blue-900"
+              : "border-transparent text-slate-400 hover:text-slate-500"
+          }`}
+        >
+          Wyślij powiadomienie 🚀
+        </button>
+      </div>
+
       {alert && (
         <div className={`p-4 rounded-xl text-sm font-bold border ${alert.type === "success" ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-700 border-red-100"}`}>
           {alert.text}
         </div>
       )}
 
-      {/* Notifications list */}
-      {loading ? (
-        <div className="space-y-3">
-          <Skeleton className="h-16 w-full rounded-2xl" />
-          <Skeleton className="h-16 w-full rounded-2xl" />
-        </div>
-      ) : notifications.length === 0 ? (
-        <div className="p-12 border-2 border-dashed border-slate-100 rounded-3xl text-center text-slate-400 font-bold">
-          Brak powiadomień.
-        </div>
-      ) : (
-        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => handleNotificationClick(n)}
-              className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer hover:shadow-sm ${
-                n.isRead
-                  ? "bg-slate-50/50 border-slate-100/50 opacity-70"
-                  : "bg-blue-50/20 border-blue-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-lg">
-                  {getIcon(n.type)}
-                </div>
-                <div>
-                  <p className={`text-sm ${n.isRead ? "text-slate-600 font-medium" : "text-blue-900 font-black"}`}>
-                    {n.content}
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-bold mt-0.5">
-                    {new Date(n.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2 shrink-0 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
-                {n.type === "FRIEND_REQUEST" && !n.isRead && (
-                  <>
-                    <button
-                      disabled={actionLoading === n.id}
-                      onClick={() => handleFriendAction(n.id, parseFriendRequesterEmail(n.content), "ACCEPT")}
-                      className="px-3 py-1.5 text-xs font-black bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-                    >
-                      Akceptuj
-                    </button>
-                    <button
-                      disabled={actionLoading === n.id}
-                      onClick={() => handleFriendAction(n.id, parseFriendRequesterEmail(n.content), "REJECT")}
-                      className="px-3 py-1.5 text-xs font-black bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition"
-                    >
-                      Odrzuć
-                    </button>
-                  </>
-                )}
-
-                {n.type === "TRIP_INVITE" && !n.isRead && (
-                  <>
-                    <button
-                      disabled={actionLoading === n.id}
-                      onClick={() => handleTripAction(n.id, parseTripName(n.content), "ACCEPT")}
-                      className="px-3 py-1.5 text-xs font-black bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-                    >
-                      Dołącz
-                    </button>
-                    <button
-                      disabled={actionLoading === n.id}
-                      onClick={() => handleTripAction(n.id, parseTripName(n.content), "DECLINE")}
-                      className="px-3 py-1.5 text-xs font-black bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition"
-                    >
-                      Odrzuć
-                    </button>
-                  </>
-                )}
-
-                <button
-                  onClick={() => handleDelete(n.id)}
-                  className="p-2 hover:bg-red-50 rounded-lg transition text-slate-300 hover:text-red-500"
-                  title="Usuń powiadomienie"
-                >
-                  ❌
-                </button>
-              </div>
+      {activeTab === "send" ? (
+        <form onSubmit={handleSendCustomNotification} className="space-y-6 bg-slate-50/50 p-6 md:p-8 rounded-3xl border border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Odbiorca */}
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-wider text-blue-900 block">Odbiorca (Znajomy)</label>
+              <select
+                value={selectedRecipientId}
+                onChange={(e) => setSelectedRecipientId(e.target.value)}
+                required
+                className="w-full bg-white border border-slate-200 focus:border-blue-500 p-4 rounded-xl text-sm font-bold text-blue-900 transition-all outline-none"
+              >
+                <option value="">Wybierz znajomego...</option>
+                {friends.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name || f.email} ({f.email})
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
-        </div>
+
+            {/* Powiązany wyjazd */}
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-wider text-blue-900 block">Powiązany wyjazd (Opcjonalnie)</label>
+              <select
+                value={selectedTripId}
+                onChange={(e) => setSelectedTripId(e.target.value)}
+                className="w-full bg-white border border-slate-200 focus:border-blue-500 p-4 rounded-xl text-sm font-bold text-blue-900 transition-all outline-none"
+              >
+                <option value="">Brak powiązania</option>
+                {trips.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Wybór emotki */}
+          <div className="space-y-3">
+            <label className="text-xs font-black uppercase tracking-wider text-blue-900 block">Ikonka powiadomienia (Emotka)</label>
+            <div className="flex flex-wrap gap-2">
+              {["🔔", "✈️", "🎉", "⚠️", "💬", "🔥", "📍", "🍔", "🎯", "💡", "🌟", "🚗", "🏖️", "🏨", "🗺️", "🚀", "⚡", "📅"].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setSelectedEmoji(emoji)}
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all border ${
+                    selectedEmoji === emoji
+                      ? "bg-blue-600 border-blue-600 text-white scale-110 shadow-md shadow-blue-200"
+                      : "bg-white border border-slate-100 hover:bg-slate-50 text-slate-700 hover:border-slate-200"
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Treść */}
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-wider text-blue-900 block">Treść powiadomienia</label>
+            <textarea
+              value={customContent}
+              onChange={(e) => setCustomContent(e.target.value)}
+              placeholder="Wpisz treść powiadomienia..."
+              required
+              rows={3}
+              className="w-full bg-white border border-slate-200 focus:border-blue-500 p-4 rounded-xl text-sm font-bold text-blue-900 transition-all outline-none resize-none"
+            />
+          </div>
+
+          {/* Przycisk wyślij */}
+          <button
+            type="submit"
+            disabled={sendingNotif || !selectedRecipientId || !customContent.trim()}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-sm shadow-lg shadow-blue-200 transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2"
+          >
+            {sendingNotif ? "Wysyłanie..." : `Wyślij powiadomienie ${selectedEmoji}`}
+          </button>
+        </form>
+      ) : (
+        /* Notifications list */
+        loading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-16 w-full rounded-2xl" />
+            <Skeleton className="h-16 w-full rounded-2xl" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="p-12 border-2 border-dashed border-slate-100 rounded-3xl text-center text-slate-400 font-bold">
+            Brak powiadomień.
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+            {notifications.map((n) => (
+              <div
+                key={n.id}
+                onClick={() => handleNotificationClick(n)}
+                className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer hover:shadow-sm ${
+                  n.isRead
+                    ? "bg-slate-50/50 border-slate-100/50 opacity-70"
+                    : "bg-blue-50/20 border-blue-50"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-lg">
+                    {getIcon(n)}
+                  </div>
+                  <div>
+                    <p className={`text-sm ${n.isRead ? "text-slate-600 font-medium" : "text-blue-900 font-black"}`}>
+                      {n.content}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                      {new Date(n.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 shrink-0 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
+                  {n.type === "FRIEND_REQUEST" && !n.isRead && (
+                    <>
+                      <button
+                        disabled={actionLoading === n.id}
+                        onClick={() => handleFriendAction(n.id, parseFriendRequesterEmail(n.content), "ACCEPT")}
+                        className="px-3 py-1.5 text-xs font-black bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                      >
+                        Akceptuj
+                      </button>
+                      <button
+                        disabled={actionLoading === n.id}
+                        onClick={() => handleFriendAction(n.id, parseFriendRequesterEmail(n.content), "REJECT")}
+                        className="px-3 py-1.5 text-xs font-black bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition"
+                      >
+                        Odrzuć
+                      </button>
+                    </>
+                  )}
+
+                  {n.type === "TRIP_INVITE" && !n.isRead && (
+                    <>
+                      <button
+                        disabled={actionLoading === n.id}
+                        onClick={() => handleTripAction(n.id, parseTripName(n.content), "ACCEPT")}
+                        className="px-3 py-1.5 text-xs font-black bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                      >
+                        Dołącz
+                      </button>
+                      <button
+                        disabled={actionLoading === n.id}
+                        onClick={() => handleTripAction(n.id, parseTripName(n.content), "DECLINE")}
+                        className="px-3 py-1.5 text-xs font-black bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition"
+                      >
+                        Odrzuć
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => handleDelete(n.id)}
+                    className="p-2 hover:bg-red-50 rounded-lg transition text-slate-300 hover:text-red-500"
+                    title="Usuń powiadomienie"
+                  >
+                    ❌
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );

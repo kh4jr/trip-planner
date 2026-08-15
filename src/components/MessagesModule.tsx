@@ -40,6 +40,10 @@ export default function MessagesModule({ initialFriendId }: { initialFriendId?: 
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
 
+  // Silent messaging and emoji selector states
+  const [notifyReceiver, setNotifyReceiver] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -123,6 +127,7 @@ export default function MessagesModule({ initialFriendId }: { initialFriendId?: 
     const text = inputText.trim();
     setInputText("");
     setSending(true);
+    setShowEmojiPicker(false);
 
     try {
       const res = await fetch("/api/messages", {
@@ -131,6 +136,7 @@ export default function MessagesModule({ initialFriendId }: { initialFriendId?: 
         body: JSON.stringify({
           receiverId: activeContact.id,
           content: text,
+          notify: notifyReceiver,
         }),
       });
 
@@ -284,20 +290,83 @@ export default function MessagesModule({ initialFriendId }: { initialFriendId?: 
             </div>
 
             {/* Input form */}
-            <form onSubmit={handleSend} className="p-4 border-t border-blue-50 flex gap-3">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder="Napisz wiadomość..."
-                className="flex-1 border border-slate-200 focus:border-blue-500 p-4 rounded-xl text-sm font-bold text-blue-900 transition-all outline-none"
-              />
+            <form onSubmit={handleSend} className="p-4 border-t border-blue-50 flex items-center gap-3 bg-slate-50/50 relative">
+              {/* Emoji Picker Popover */}
+              {showEmojiPicker && (
+                <div className="absolute bottom-20 right-16 bg-white border border-slate-200 p-4 rounded-2xl shadow-xl z-50 grid grid-cols-6 gap-2 w-[240px]">
+                  {["😊", "😂", "👍", "❤️", "🔥", "🎉", "✈️", "🏖️", "🏨", "🗺️", "🚀", "💡", "⚠️", "🔔", "⭐", "🚗", "🍕", "🌟"].map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        setInputText((prev) => prev + emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                      className="text-2xl hover:scale-125 transition-transform"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Telegram-style input bar */}
+              <div className="flex-1 bg-white border border-slate-200 focus-within:border-blue-500 rounded-full py-2 px-4 flex items-center gap-3 transition-all">
+                {/* Paperclip (Decorative icon to match Telegram layout) */}
+                <button
+                  type="button"
+                  title="Załącznik"
+                  className="text-slate-400 hover:text-slate-600 text-xl transition-colors shrink-0"
+                >
+                  📎
+                </button>
+
+                {/* Input text */}
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={notifyReceiver ? "Napisz wiadomość..." : "Napisz wiadomość (Ciche powiadomienie)..."}
+                  className="flex-1 bg-transparent text-sm font-bold text-blue-900 outline-none min-w-0"
+                />
+
+                {/* Bell toggle icon */}
+                <button
+                  type="button"
+                  onClick={() => setNotifyReceiver((prev) => !prev)}
+                  title={notifyReceiver ? "Powiadomienia włączone (Wyślij głośno)" : "Powiadomienia wyłączone (Wyślij cicho)"}
+                  className={`text-xl transition-all hover:scale-110 shrink-0 ${
+                    notifyReceiver ? "text-blue-500" : "text-slate-350 opacity-60"
+                  }`}
+                >
+                  {notifyReceiver ? "🔔" : "🔕"}
+                </button>
+
+                {/* Smiley face (Emoji picker) toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker((prev) => !prev)}
+                  title="Wybierz emoji"
+                  className={`text-xl transition-all hover:scale-110 shrink-0 ${
+                    showEmojiPicker ? "text-blue-500" : "text-slate-400 hover:text-slate-650"
+                  }`}
+                >
+                  😊
+                </button>
+              </div>
+
+              {/* Send / Mic button */}
               <button
                 type="submit"
-                disabled={!inputText.trim() || sending}
-                className="px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-sm shadow-md transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center"
+                disabled={sending}
+                className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-200 transition-all shrink-0 active:scale-95 disabled:opacity-50"
+                title="Wyślij"
               >
-                Wyślij
+                {inputText.trim() ? (
+                  <span className="text-lg">✈️</span>
+                ) : (
+                  <span className="text-lg">🎤</span>
+                )}
               </button>
             </form>
           </>

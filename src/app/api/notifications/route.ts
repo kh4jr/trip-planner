@@ -86,3 +86,45 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
+
+// POST /api/notifications -> Send a custom notification
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { recipientId, content, emoji, link } = body;
+
+    if (!recipientId || !content || content.trim() === "") {
+      return NextResponse.json({ error: "Nieprawidłowe dane" }, { status: 400 });
+    }
+
+    const recipientExists = await db.user.findUnique({
+      where: { id: Number(recipientId) },
+    });
+
+    if (!recipientExists) {
+      return NextResponse.json({ error: "Odbiorca nie istnieje" }, { status: 404 });
+    }
+
+    const senderName = session.user.name || session.user.email;
+
+    const notification = await db.notification.create({
+      data: {
+        userId: Number(recipientId),
+        type: "CUSTOM",
+        content: `Wiadomość od ${senderName}: ${content}`,
+        emoji: emoji || "🔔",
+        link: link || null,
+      },
+    });
+
+    return NextResponse.json(notification);
+  } catch (error) {
+    console.error("Error creating custom notification:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
