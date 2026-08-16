@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from '@/lib/auth';
 import { db } from "@/lib/db";
 
+
+//get all friends of the current user
 export async function GET() {
   const session = await getServerSession(authOptions);
   const meId = session?.user?.id ? Number(session.user.id) : null;
