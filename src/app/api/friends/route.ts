@@ -14,6 +14,7 @@ export async function GET() {
   }
 
   const friends = await db.friend.findMany({
+  //const friends = await db.friend.findMany({
     where: {
       status: "ACCEPTED",
       OR: [{ userId: meId }, { friendId: meId }],
