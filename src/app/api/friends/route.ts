@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from '@/lib/auth';
 import { db } from "@/lib/db";
 
-
 //get all friends of the current user
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -204,10 +203,11 @@ export async function PUT(req: Request) {
     data: { status: "ACCEPTED" },
   });
 
-  // Utwórz powiadomienie o zaakceptowaniu zaproszenia do znajomych
+  // powiadomienie o zaakceptowaniu
   await db.notification.create({
     data: {
       userId: friendId,
+      // type: "FRIEND_ACCEPTED",
       type: "FRIEND_ACCEPTED",
       content: `${session?.user?.name || session?.user?.email || "Użytkownik"} zaakceptował Twoje zaproszenie do znajomych`,
       link: "/friends",
